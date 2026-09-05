@@ -27,17 +27,37 @@ pub(crate) struct ResponsesToolCall<'a> {
     pub call_id: &'a str,
     pub name: &'a str,
     pub arguments: &'a str,
+    pub namespace: &'a str,
+    pub custom: bool,
 }
 
 pub(crate) fn function_call_output_item(call: &ResponsesToolCall<'_>) -> Value {
-    json!({
+    if call.custom {
+        let mut item = json!({
+            "id": format!("ctc_{}", call.call_id),
+            "type": "custom_tool_call",
+            "status": "completed",
+            "input": unwrap_custom_tool_input(call.arguments),
+            "call_id": call.call_id,
+            "name": call.name,
+        });
+        if !call.namespace.is_empty() {
+            item["namespace"] = json!(call.namespace);
+        }
+        return item;
+    }
+    let mut item = json!({
         "id": format!("fc_{}", call.call_id),
         "type": "function_call",
         "status": "completed",
         "arguments": call.arguments,
         "call_id": call.call_id,
         "name": call.name,
-    })
+    });
+    if !call.namespace.is_empty() {
+        item["namespace"] = json!(call.namespace);
+    }
+    item
 }
 
 pub(crate) fn build_completed_event(
@@ -183,15 +203,46 @@ pub(crate) fn build_function_call_events(
     call: &ResponsesToolCall<'_>,
     output_index: usize,
 ) -> Vec<Value> {
-    let item_id = format!("fc_{}", call.call_id);
     let mut item = function_call_output_item(call);
+    let item_id = item
+        .get("id")
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string();
     let opening = {
         let mut opening = item.clone();
         opening["status"] = json!("in_progress");
-        opening["arguments"] = json!("");
+        if call.custom {
+            opening["input"] = json!("");
+        } else {
+            opening["arguments"] = json!("");
+        }
         opening
     };
     item["status"] = json!("completed");
+
+    let (delta_event, done_event, payload_field, payload) = match call.custom {
+        true => {
+            let input = unwrap_custom_tool_input(call.arguments);
+            (
+                "response.custom_tool_call_input.delta",
+                "response.custom_tool_call_input.done",
+                "input",
+                input,
+            )
+        }
+        false => (
+            "response.function_call_arguments.delta",
+            "response.function_call_arguments.done",
+            "arguments",
+            json!(call.arguments),
+        ),
+    };
+    let delta = match payload.as_str() {
+        Some(text) => json!(text),
+        None => json!(payload.to_string()),
+    };
+
     vec![
         json!({
             "type": "response.output_item.added",
@@ -199,16 +250,16 @@ pub(crate) fn build_function_call_events(
             "item": opening,
         }),
         json!({
-            "type": "response.function_call_arguments.delta",
+            "type": delta_event,
             "item_id": item_id,
             "output_index": output_index,
-            "delta": call.arguments,
+            "delta": delta,
         }),
         json!({
-            "type": "response.function_call_arguments.done",
+            "type": done_event,
             "item_id": item_id,
             "output_index": output_index,
-            "arguments": call.arguments,
+            payload_field: payload,
         }),
         json!({
             "type": "response.output_item.done",
@@ -441,6 +492,8 @@ mod tests {
             call_id: "call_1",
             name: "read_file",
             arguments: "{\"path\":\"a.rs\"}",
+            namespace: "",
+            custom: false,
         }];
         let event = build_completed_event("resp_1", "m", "", "", &calls, 0, 0, 0, 0, 0);
         assert_eq!(event["response"]["output"][0]["type"], "function_call");
@@ -474,6 +527,8 @@ mod tests {
             call_id: "call_9",
             name: "bash",
             arguments: "{}",
+            namespace: "",
+            custom: false,
         };
         let events = build_function_call_events(&call, 2);
         let types: Vec<&str> = events
@@ -658,6 +713,8 @@ mod tests {
             call_id: "call_1",
             name: "run_terminal_command",
             arguments: "{\"command\":\"ls\"}",
+            namespace: "",
+            custom: false,
         };
         let mut events: Vec<Value> = Vec::new();
         events.extend(build_reasoning_open("rs_1", 0));

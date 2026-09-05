@@ -1,3 +1,4 @@
+pub mod antigravity;
 pub mod commandcode;
 pub mod workbuddy;
 
@@ -17,6 +18,7 @@ pub enum Provider {
     Responses { base_url: String, api_key: String },
     Workbuddy,
     CommandCode,
+    Antigravity,
 }
 
 pub struct Sent {
@@ -34,7 +36,7 @@ impl Provider {
         match self {
             Self::ChatCompletions { .. } | Self::Workbuddy => Protocol::Chat,
             Self::Responses { .. } => Protocol::Responses,
-            Self::CommandCode => Protocol::Generate,
+            Self::CommandCode | Self::Antigravity => Protocol::Generate,
         }
     }
 
@@ -42,6 +44,7 @@ impl Provider {
         match self {
             Self::Workbuddy => Some(Channel::Workbuddy),
             Self::CommandCode => Some(Channel::Commandcode),
+            Self::Antigravity => Some(Channel::Antigravity),
             Self::ChatCompletions { .. } | Self::Responses { .. } => None,
         }
     }
@@ -80,6 +83,7 @@ impl Provider {
                 }),
             },
             Self::CommandCode => commandcode::send(app, payload).await,
+            Self::Antigravity => app.antigravity.send(payload).await,
         }
     }
 
@@ -138,6 +142,7 @@ pub fn from_entry(provider: &Value) -> Provider {
     match Channel::parse(kind) {
         Some(Channel::Workbuddy) => Provider::Workbuddy,
         Some(Channel::Commandcode) => Provider::CommandCode,
+        Some(Channel::Antigravity) => Provider::Antigravity,
         None => Provider::ChatCompletions { base_url, api_key },
     }
 }

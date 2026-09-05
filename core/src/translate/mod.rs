@@ -1,6 +1,7 @@
 pub mod chat;
 pub mod collect;
 pub mod finish;
+pub mod gemini;
 pub mod generate;
 pub mod ids;
 pub mod json;

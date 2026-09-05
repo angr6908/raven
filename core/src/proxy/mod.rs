@@ -17,7 +17,9 @@ use crate::net::error::ApiError;
 use crate::protocol::Protocol;
 use crate::state::usage::UsageEvent;
 
+use crate::translate::chat::types::ChatRequest;
 use crate::translate::collect::Collector;
+use crate::translate::generate::build_generate_request;
 use self::route::Target;
 
 pub struct Meter {
@@ -126,6 +128,21 @@ impl Exchange {
                 self.meter.attribute(&failure.account);
                 Err(self.fail(failure.error))
             }
+        }
+    }
+
+    pub fn encode_generate(&mut self, req: ChatRequest) -> Result<Bytes, Response> {
+        if matches!(self.target.provider, Provider::Antigravity) {
+            let model = self.target.upstream_model.clone();
+            return match self.app.antigravity.encode_request(req, &model) {
+                Ok(body) => Ok(Bytes::from(body)),
+                Err(err) => Err(self.fail(ApiError::bad_request(err))),
+            };
+        }
+        let work_dir = self.app.work_dir.clone();
+        match build_generate_request(req, &work_dir, chrono::Utc::now()) {
+            Ok(body) => self.encode(&body),
+            Err(err) => Err(self.fail(ApiError::bad_request(format!("build cc request: {err}")))),
         }
     }
 

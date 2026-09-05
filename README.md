@@ -8,6 +8,8 @@ One LaunchAgent (`com.raven`, KeepAlive) runs one process: the Rust proxy
 - `/v1/...`, `/health` — clients
 - `/api/...` — panel (same origin), served from `app/dist`
 - `:3459` — dev only: `cd app && bun run dev` (Vite, proxies `/api` → :3458)
+- `:51121` — loopback, bound only while an Antigravity Google sign-in is in
+  flight (OAuth callback); a new sign-in replaces the previous listener
 
 ## Commands
 

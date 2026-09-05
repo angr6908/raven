@@ -21,15 +21,21 @@ pub const ACCOUNT_FILE: &str = "accounts.json";
 pub enum Channel {
     Commandcode,
     Workbuddy,
+    Antigravity,
 }
 
 impl Channel {
-    pub const ALL: [Channel; 2] = [Channel::Commandcode, Channel::Workbuddy];
+    pub const ALL: [Channel; 3] = [
+        Channel::Commandcode,
+        Channel::Workbuddy,
+        Channel::Antigravity,
+    ];
 
     pub const fn as_str(self) -> &'static str {
         match self {
             Channel::Commandcode => "commandcode",
             Channel::Workbuddy => "workbuddy",
+            Channel::Antigravity => "antigravity",
         }
     }
 
@@ -87,6 +93,21 @@ pub struct Account {
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub workbuddy_nickname: String,
 
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub antigravity_access_token: String,
+
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub antigravity_refresh_token: String,
+
+    #[serde(default)]
+    pub antigravity_expires_at: i64,
+
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub antigravity_project_id: String,
+
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub antigravity_email: String,
+
     #[serde(default, skip_serializing_if = "std::ops::Not::not")]
     pub disabled: bool,
 }
@@ -109,12 +130,21 @@ impl Account {
     }
 
     pub fn has_live_credentials(&self) -> bool {
-        !self.session_token.is_empty() || !self.workbuddy_access_token.is_empty()
+        !self.session_token.is_empty()
+            || !self.workbuddy_access_token.is_empty()
+            || !self.antigravity_access_token.is_empty()
+            || !self.antigravity_refresh_token.is_empty()
     }
 
     pub fn workbuddy_ready(&self) -> bool {
         !self.disabled
             && (!self.workbuddy_access_token.is_empty() || !self.workbuddy_refresh_token.is_empty())
+    }
+
+    pub fn antigravity_ready(&self) -> bool {
+        !self.disabled
+            && (!self.antigravity_access_token.is_empty()
+                || !self.antigravity_refresh_token.is_empty())
     }
 }
 
@@ -142,6 +172,8 @@ pub struct AccountView {
     pub session_token: String,
     pub workbuddy_uid: String,
     pub workbuddy_nickname: String,
+    pub antigravity_email: String,
+    pub antigravity_project_id: String,
     pub disabled: bool,
 }
 
@@ -154,6 +186,8 @@ impl AccountView {
             session_token: account.session_token,
             workbuddy_uid: account.workbuddy_uid,
             workbuddy_nickname: account.workbuddy_nickname,
+            antigravity_email: account.antigravity_email,
+            antigravity_project_id: account.antigravity_project_id,
             disabled: account.disabled,
         }
     }
@@ -192,6 +226,16 @@ pub struct AccountPatch {
     pub workbuddy_enterprise_id: String,
     #[serde(default)]
     pub workbuddy_nickname: String,
+    #[serde(default)]
+    pub antigravity_access_token: String,
+    #[serde(default)]
+    pub antigravity_refresh_token: String,
+    #[serde(default)]
+    pub antigravity_expires_at: i64,
+    #[serde(default)]
+    pub antigravity_project_id: String,
+    #[serde(default)]
+    pub antigravity_email: String,
 
     #[serde(default)]
     pub disabled: Option<bool>,
@@ -262,6 +306,10 @@ impl AccountsManager {
             &mut account.workbuddy_uid,
             &mut account.workbuddy_enterprise_id,
             &mut account.workbuddy_nickname,
+            &mut account.antigravity_access_token,
+            &mut account.antigravity_refresh_token,
+            &mut account.antigravity_project_id,
+            &mut account.antigravity_email,
         ] {
             *field = field.trim().to_string();
         }
@@ -275,7 +323,7 @@ impl AccountsManager {
         if account.name.is_empty() {
             return Err("account name is required".to_string());
         }
-        if channel != Channel::Workbuddy && account.key.is_empty() {
+        if !matches!(channel, Channel::Workbuddy | Channel::Antigravity) && account.key.is_empty() {
             return Err("account key is required".to_string());
         }
         if channel == Channel::Workbuddy
@@ -283,6 +331,12 @@ impl AccountsManager {
             && account.workbuddy_refresh_token.is_empty()
         {
             return Err("workbuddy accounts require a token (paste the auth json)".to_string());
+        }
+        if channel == Channel::Antigravity
+            && account.antigravity_access_token.is_empty()
+            && account.antigravity_refresh_token.is_empty()
+        {
+            return Err("antigravity accounts require a Google sign-in".to_string());
         }
         if channel == Channel::Commandcode && account.monthly_credits <= 0.0 {
             account.monthly_credits = DEFAULT_MONTHLY_CREDITS;
@@ -331,8 +385,24 @@ impl AccountsManager {
             merge_string(&mut current.workbuddy_uid, &patch.workbuddy_uid);
             merge_string(&mut current.workbuddy_enterprise_id, &patch.workbuddy_enterprise_id);
             merge_string(&mut current.workbuddy_nickname, &patch.workbuddy_nickname);
+            merge_string(
+                &mut current.antigravity_access_token,
+                &patch.antigravity_access_token,
+            );
+            merge_string(
+                &mut current.antigravity_refresh_token,
+                &patch.antigravity_refresh_token,
+            );
+            merge_string(
+                &mut current.antigravity_project_id,
+                &patch.antigravity_project_id,
+            );
+            merge_string(&mut current.antigravity_email, &patch.antigravity_email);
             if patch.workbuddy_expires_at != 0 {
                 current.workbuddy_expires_at = patch.workbuddy_expires_at;
+            }
+            if patch.antigravity_expires_at != 0 {
+                current.antigravity_expires_at = patch.antigravity_expires_at;
             }
             if let Some(disabled) = patch.disabled {
                 current.disabled = disabled;

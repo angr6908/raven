@@ -12,7 +12,6 @@ use crate::protocol::Protocol;
 use crate::net::error::ApiError;
 use crate::net::sse::{data_payload, frame_channel, send_data_event, send_done, FrameSender, SseReader};
 use crate::net::ApiJson;
-use crate::translate::generate::build_generate_request;
 use crate::translate::chat::via_responses_reply::{responses_to_chat_completion, ResponsesToChat};
 use crate::translate::chat::via_responses_request::chat_request_to_responses_body;
 use crate::translate::responses::apply_responses_usage;
@@ -252,10 +251,7 @@ async fn via_generate(mut ex: Exchange, mut req: ChatRequest) -> Result<Response
     if !req.reasoning_effort.is_empty() {
         eprintln!("effort {}: {}", ex.alias, req.reasoning_effort);
     }
-    let work_dir = ex.app.work_dir.clone();
-    let generate = build_generate_request(req, &work_dir, Utc::now())
-        .map_err(|err| ex.fail(ApiError::bad_request(err)))?;
-    let payload = ex.encode(&generate)?;
+    let payload = ex.encode_generate(req)?;
     let upstream = ex.send(payload).await?;
 
     let model = ex.alias.clone();

@@ -41,6 +41,7 @@ interface UsageTokenBreakdown {
 export type AccountProvider =
   | "commandcode"
   | "workbuddy"
+  | "antigravity"
 
 export interface Account {
   name: string
@@ -49,6 +50,8 @@ export interface Account {
   session_token?: string
   workbuddy_uid?: string
   workbuddy_nickname?: string
+  antigravity_email?: string
+  antigravity_project_id?: string
   disabled?: boolean
 }
 
@@ -236,6 +239,102 @@ export async function getWorkbuddyOAuthStatus(
   )
 }
 
+interface AntigravityAccountStatus {
+  name: string
+  email?: string
+  project?: string
+  expires_at?: number
+  expired?: boolean
+  disabled?: boolean
+}
+
+export interface AntigravityStatus {
+  accounts: AntigravityAccountStatus[]
+  total: number
+  healthy: number
+}
+
+export async function getAntigravityStatus(
+  signal?: AbortSignal
+): Promise<AntigravityStatus> {
+  return fetchJSON<AntigravityStatus>("/antigravity/status", signal)
+}
+
+export async function refreshAntigravity(): Promise<AntigravityStatus> {
+  return postJSON("/antigravity/refresh", {})
+}
+
+export interface AntigravityOAuthStart {
+  session: string
+  url: string
+}
+
+export async function startAntigravityOAuth(
+  signal?: AbortSignal
+): Promise<AntigravityOAuthStart> {
+  return fetchJSON<AntigravityOAuthStart>("/oauth/antigravity/start", signal)
+}
+
+export interface AntigravityOAuthStatus {
+  done: boolean
+  success: boolean
+  email?: string
+  name?: string
+  error?: string
+  url?: string
+}
+
+export async function getAntigravityOAuthStatus(
+  session: string,
+  signal?: AbortSignal
+): Promise<AntigravityOAuthStatus> {
+  return fetchJSON<AntigravityOAuthStatus>(
+    `/oauth/antigravity/status?session=${encodeURIComponent(session)}`,
+    signal
+  )
+}
+
+export async function completeAntigravityOAuth(
+  session: string,
+  callback: string
+): Promise<{ ok: boolean; name: string; email: string }> {
+  return postJSON("/accounts/antigravity", { session, callback })
+}
+
+export interface AntigravityQuotaBucket {
+  bucketId?: string
+  displayName?: string
+  window?: string
+  resetTime?: string
+  remainingFraction?: number
+}
+
+export interface AntigravityQuotaGroup {
+  displayName?: string
+  description?: string
+  buckets?: AntigravityQuotaBucket[]
+}
+
+export interface AntigravityQuotaAccount {
+  name: string
+  email?: string
+  project?: string
+  groups?: AntigravityQuotaGroup[]
+  description?: string
+  error?: string
+  tier?: { id?: string; name?: string }
+  paid_tier?: { id?: string; name?: string }
+}
+
+export async function getAntigravityQuota(
+  signal?: AbortSignal
+): Promise<{ accounts: AntigravityQuotaAccount[] }> {
+  return fetchJSON<{ accounts: AntigravityQuotaAccount[] }>(
+    "/antigravity/quota",
+    signal
+  )
+}
+
 
 export interface ModelPrice {
   input: number
@@ -418,7 +517,7 @@ export interface ProviderModelDef {
 export interface ProviderEntry {
   name: string
   disabled: boolean
-  kind?: "openai" | "responses" | "workbuddy" | "commandcode"
+  kind?: "openai" | "responses" | "workbuddy" | "commandcode" | "antigravity"
   "base-url": string
   project?: string
   "api-key-entries": { "api-key": string; "proxy-url"?: string }[]
@@ -440,7 +539,11 @@ export function blankProviderEntry(
 }
 
 export function isManagedZone(p: ProviderEntry): boolean {
-  return p.kind === "workbuddy" || p.kind === "commandcode"
+  return (
+    p.kind === "workbuddy" ||
+    p.kind === "commandcode" ||
+    p.kind === "antigravity"
+  )
 }
 
 export async function getProviders(signal?: AbortSignal): Promise<ProviderEntry[]> {
@@ -484,10 +587,11 @@ export interface ZoneModel {
   context_length?: number
   max_completion_tokens?: number
   efforts?: string[]
+  thinking?: { levels?: string[] }
 }
 
 export async function fetchZoneModels(
-  kind: "workbuddy" | "commandcode",
+  kind: "workbuddy" | "commandcode" | "antigravity",
   signal?: AbortSignal
 ): Promise<ZoneModel[]> {
   const data = await fetchJSON<{ models: ZoneModel[] }>(

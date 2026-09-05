@@ -1,6 +1,7 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::providers::antigravity::Antigravity;
 use crate::providers::commandcode::{self, limits::AccountLimits, models::ModelCache};
 use crate::providers::workbuddy::Workbuddy;
 use crate::config::{Config, VERSION};
@@ -18,6 +19,7 @@ pub struct App {
     pub models: Arc<ModelCache>,
     pub catalog: Arc<CatalogCache>,
     pub workbuddy: Arc<Workbuddy>,
+    pub antigravity: Arc<Antigravity>,
 
     pub client: reqwest::Client,
     pub commandcode: commandcode::Settings,
@@ -39,6 +41,7 @@ impl App {
 
         let accounts = Arc::new(AccountsManager::new(&config.data_dir)?);
         let workbuddy = Workbuddy::new(&config.data_dir, Arc::clone(&accounts), client.clone());
+        let antigravity = Antigravity::new(Arc::clone(&accounts));
 
         Ok(Self {
             limits: Arc::new(AccountLimits::new(
@@ -56,6 +59,7 @@ impl App {
             catalog: Arc::new(CatalogCache::new()),
             accounts,
             workbuddy,
+            antigravity,
             client,
             commandcode,
             work_dir: config.work_dir().to_string_lossy().into_owned(),

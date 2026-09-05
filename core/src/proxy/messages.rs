@@ -23,7 +23,6 @@ use crate::translate::messages::{
     message_start_event, tool_name_map, MessagesStream,
 };
 use crate::translate::messages::input_tokens::spawn_input_token_filter;
-use crate::translate::generate::build_generate_request;
 use crate::translate::summary::{self, SummaryFormat};
 use crate::translate::StreamOutcome;
 use crate::translate::collect::Collector;
@@ -204,10 +203,7 @@ async fn via_responses(mut ex: Exchange, req: Value) -> Result<Response, Respons
 async fn via_generate(mut ex: Exchange, req: Value) -> Result<Response, Response> {
     let model = ex.upstream_model().to_string();
     let oai = messages_to_chat_request(&req, &ex.alias, ex.stream);
-    let work_dir = ex.app.work_dir.clone();
-    let generate = build_generate_request(oai, &work_dir, chrono::Utc::now())
-        .map_err(|err| ex.fail(ApiError::bad_request(format!("build cc request: {err}"))))?;
-    let payload = ex.encode(&generate)?;
+    let payload = ex.encode_generate(oai)?;
     let upstream = ex.send(payload).await?;
     let message_id = new_message_id();
     let client_model = ex.alias.clone();

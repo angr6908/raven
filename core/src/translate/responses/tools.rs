@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 
 use serde_json::{json, Value};
 
@@ -388,6 +388,36 @@ pub fn resolve_responses_qualified_tool_identity(
     found
 }
 
+#[derive(Debug, Default, Clone)]
+pub struct ToolIdentities {
+    entries: HashMap<String, (String, String, bool)>,
+}
+
+impl ToolIdentities {
+    pub fn new(request: &Value) -> Self {
+        let mut entries: HashMap<String, (String, String, bool)> = HashMap::new();
+        walk_tool_declarations(request, |declaration| {
+            entries
+                .entry(declaration.chat_name.clone())
+                .or_insert((
+                    declaration.local_name.clone(),
+                    declaration.namespace.clone(),
+                    declaration.custom,
+                ));
+            true
+        });
+        Self { entries }
+    }
+
+    pub fn resolve(&self, qualified_name: &str) -> (String, String, bool) {
+        let qualified_name = qualified_name.trim();
+        match self.entries.get(qualified_name) {
+            Some((name, namespace, custom)) => (name.clone(), namespace.clone(), *custom),
+            None => (qualified_name.to_string(), String::new(), false),
+        }
+    }
+}
+
 pub fn split_responses_qualified_function_call_from_request(
     request: &Value,
     qualified_name: &str,
@@ -474,4 +504,63 @@ pub fn request_model_name(original_request: &Value, upstream_request: &Value) ->
         }
     }
     String::new()
+}
+
+#[cfg(test)]
+mod identity_table_tests {
+    use super::*;
+
+    fn codex_request() -> Value {
+        json!({"tools": [
+            {"type": "namespace", "name": "functions", "tools": [
+                {"type": "custom", "name": "exec", "description": "run"},
+                {"type": "function", "name": "read", "parameters": {"type": "object"}},
+            ]},
+            {"type": "function", "name": "web_search"},
+        ]})
+    }
+
+    #[test]
+    fn qualified_names_resolve_back_to_name_namespace_and_kind() {
+        let identities = ToolIdentities::new(&codex_request());
+        assert_eq!(
+            identities.resolve("functions__exec"),
+            ("exec".to_string(), "functions".to_string(), true)
+        );
+        assert_eq!(
+            identities.resolve("functions__read"),
+            ("read".to_string(), "functions".to_string(), false)
+        );
+        assert_eq!(
+            identities.resolve("web_search"),
+            ("web_search".to_string(), String::new(), false)
+        );
+    }
+
+    #[test]
+    fn an_undeclared_name_is_passed_through_untouched() {
+        let identities = ToolIdentities::new(&codex_request());
+        assert_eq!(
+            identities.resolve("mystery"),
+            ("mystery".to_string(), String::new(), false)
+        );
+        assert_eq!(
+            ToolIdentities::default().resolve("functions__exec"),
+            ("functions__exec".to_string(), String::new(), false)
+        );
+    }
+
+    #[test]
+    fn the_table_agrees_with_the_one_shot_splitter() {
+        let request = codex_request();
+        let identities = ToolIdentities::new(&request);
+        for qualified in ["functions__exec", "web_search", "mystery"] {
+            let (name, namespace, _) = identities.resolve(qualified);
+            assert_eq!(
+                (name, namespace),
+                split_responses_qualified_function_call_from_request(&request, qualified),
+                "{qualified} must resolve the same way both ways"
+            );
+        }
+    }
 }

@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::app::App;
-use crate::providers::commandcode;
+use crate::providers::{antigravity, commandcode};
 use crate::state::accounts::Channel;
 
 use super::{bad_request, failed};
@@ -118,7 +118,7 @@ mod effort_menu_tests {
 
 pub(crate) fn provider_zone_name(provider: &Value) -> String {
     match crate::providers::from_entry(provider).channel() {
-        Some(channel @ Channel::Workbuddy) => channel.to_string(),
+        Some(channel @ (Channel::Workbuddy | Channel::Antigravity)) => channel.to_string(),
         _ => provider
             .get("name")
             .and_then(Value::as_str)
@@ -298,6 +298,7 @@ pub async fn handle_provider_kind_models(
     match Channel::parse(&kind) {
         Some(Channel::Workbuddy) => handle_provider_workbuddy_models(State(state)).await,
         Some(Channel::Commandcode) => commandcode::models::handle_catalog(State(state)).await,
+        Some(Channel::Antigravity) => antigravity::panel::handle_models(State(state)).await,
         None => StatusCode::NOT_FOUND.into_response(),
     }
 }

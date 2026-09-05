@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useCallback, useEffect, useRef, useState } from "react"
 import { ChevronDown } from "lucide-react"
 
 import { Badge } from "@/components/ui/badge"
@@ -19,6 +19,7 @@ function findZones(list: ProviderEntry[]) {
   return {
     commandcode: commandCodeIndex >= 0 ? list[commandCodeIndex] : undefined,
     workbuddy: list.find((p) => p.kind === "workbuddy"),
+    antigravity: list.find((p) => p.kind === "antigravity"),
   }
 }
 
@@ -35,7 +36,20 @@ export function ManagedZoneCards({
   providers: ProviderEntry[]
   editZone: ZoneEditor
 }) {
-  const { commandcode } = findZones(providers)
+  const { commandcode, antigravity } = findZones(providers)
+  const antigravityLevels = useRef(new Map<string, string[]>())
+
+  const fetchAntigravity = useCallback(async () => {
+    const models = await fetchZoneModels("antigravity")
+    antigravityLevels.current = new Map(
+      models.map((m) => [m.id, m.thinking?.levels ?? []])
+    )
+    return models.map((m) => ({
+      id: m.id,
+      label: m.display_name || m.id,
+      context: m.context_length,
+    }))
+  }, [])
 
   return (
     <div className="grid gap-3">
@@ -70,6 +84,18 @@ export function ManagedZoneCards({
           }))
         }
         emptyHint="No models pinned — fetch the upstream catalog and pick, or add a row by hand. Unlisted workbuddy ids still route by name."
+        editZone={editZone}
+      />
+      <ZoneCard
+        title="Antigravity"
+        match={(p) => p.kind === "antigravity"}
+        blank={() => blankProviderEntry("antigravity", "antigravity")}
+        entry={antigravity}
+        aliasOwner="antigravity"
+        description="Google Antigravity / Cloud Code Assist, reached with the Google sign-in on the Accounts tab. Pin the public model ids — raven picks the runtime variant (low / medium / high) per request from the effort the client asks for. Every signed-in Google account shares one pool and requests rotate across them."
+        fetchUpstream={fetchAntigravity}
+        presetEfforts={(name) => antigravityLevels.current.get(name) ?? []}
+        emptyHint="No models pinned — fetch the catalog and pick, or add a row by hand. Unlisted antigravity ids still route by name."
         editZone={editZone}
       />
     </div>

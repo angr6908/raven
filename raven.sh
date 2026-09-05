@@ -747,7 +747,7 @@ if [ "$CLIENT" = claude ]; then
   # models: calls complete with zero searches/results and encourage pointless
   # retry loops. Remove the tool from those sessions entirely. Claude-family
   # models retain the normal Claude Code web-search behavior.
-  if [[ "$SLOT_MODEL" != claude-* ]]; then
+  if [[ "$SLOT_MODEL" != claude-* || "$SLOT_MODEL" == *@* ]]; then
     set -- "$@" --disallowedTools WebSearch
   fi
   if [ -n "$RESUME" ]; then

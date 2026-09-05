@@ -13,7 +13,6 @@ use crate::net::error::ApiError;
 use crate::net::sse::{
     frame_channel, parse_block, send_data, send_done, FrameSender, SseReader,
 };
-use crate::translate::generate::build_generate_request;
 use crate::translate::responses::via_chat_reply::stream_chat_to_responses;
 use crate::translate::responses::relay;
 use crate::translate::responses::via_generate_reply;
@@ -73,7 +72,7 @@ async fn run(app: Arc<App>, body: Bytes) -> Result<Response, Response> {
             })?;
             let effort = chat.reasoning_effort.clone();
             let ex = Exchange::open(app, PROTOCOL, target, &alias, stream, &effort);
-            via_generate(ex, chat).await
+            via_generate(ex, req, chat).await
         }
     }
 }
@@ -208,13 +207,11 @@ async fn via_responses(mut ex: Exchange, req: Value) -> Result<Response, Respons
 
 async fn via_generate(
     mut ex: Exchange,
+    req: Value,
     chat: crate::translate::chat::types::ChatRequest,
 ) -> Result<Response, Response> {
-    let work_dir = ex.app.work_dir.clone();
-    let generate = build_generate_request(chat, &work_dir, chrono::Utc::now()).map_err(|err| {
-        ex.fail(ApiError::bad_request(format!("build cc request: {err}")))
-    })?;
-    let payload = ex.encode(&generate)?;
+    let identities = crate::translate::responses::tools::ToolIdentities::new(&req);
+    let payload = ex.encode_generate(chat)?;
     let upstream = ex.send(payload).await?;
     let resp_id = responses_id();
     let model = ex.alias.clone();
@@ -235,7 +232,8 @@ async fn via_generate(
                 .into_response());
         }
         let finish = collector.finish_reason();
-        let body = via_generate_reply::completed_from_collector(&collector, &resp_id, &model);
+        let body =
+            via_generate_reply::completed_from_collector(&collector, &resp_id, &model, &identities);
         meter.ok(Some(&collector), &finish);
         return Ok((StatusCode::OK, Json(body)).into_response());
     }
@@ -245,8 +243,14 @@ async fn via_generate(
     let stream_id = resp_id.clone();
     let stream_model = model.clone();
     tokio::spawn(async move {
-        let outcome =
-            via_generate_reply::stream_to_responses(upstream, &sender, &stream_id, &stream_model).await;
+        let outcome = via_generate_reply::stream_to_responses(
+            upstream,
+            &sender,
+            &stream_id,
+            &stream_model,
+            &identities,
+        )
+        .await;
         super::messages::settle(&mut meter, outcome);
         send_done(&sender);
     });

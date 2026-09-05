@@ -38,6 +38,7 @@ pub async fn handle_health(State(app): State<Arc<App>>) -> Response {
             "pools": {
                 "commandcode": commandcode,
                 "workbuddy": app.accounts.serving(Channel::Workbuddy).len(),
+                "antigravity": app.antigravity.pool().len(),
             },
         })),
     )

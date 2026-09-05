@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::app::App;
-use crate::providers::workbuddy;
+use crate::providers::{antigravity, workbuddy};
 use crate::{assets, proxy, state};
 
 pub fn build(app: Arc<App>, static_dir: &Path) -> Router {
@@ -91,6 +91,24 @@ fn management() -> Router<Arc<App>> {
         .route(
             "/oauth/workbuddy/status",
             get(workbuddy::panel::handle_oauth_status),
+        )
+        .route(
+            "/accounts/antigravity",
+            post(antigravity::panel::handle_add),
+        )
+        .route("/antigravity/status", get(antigravity::panel::handle_status))
+        .route(
+            "/antigravity/refresh",
+            post(antigravity::panel::handle_refresh),
+        )
+        .route("/antigravity/quota", get(antigravity::panel::handle_quota))
+        .route(
+            "/oauth/antigravity/start",
+            get(antigravity::panel::handle_oauth_start),
+        )
+        .route(
+            "/oauth/antigravity/status",
+            get(antigravity::panel::handle_oauth_status),
         )
 }
 
