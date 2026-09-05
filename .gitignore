@@ -1,0 +1,12 @@
+.DS_Store
+/app/node_modules/
+/app/dist/
+/core/target/
+/core/raven
+/data/
+CLAUDE.md
+references
+/core/accounts.json
+/core/usage.jsonl
+/defaults.conf
+/.raven-key
