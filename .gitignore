@@ -10,3 +10,8 @@ references
 /core/usage.jsonl
 /defaults.conf
 /.raven-key
+/launcher/.build/
+/launcher/build/
+/launcher/*.o
+/launcher/*.d
+/launcher/*.swiftdeps*
