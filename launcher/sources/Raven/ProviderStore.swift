@@ -1,65 +1,76 @@
 import Foundation
-import Combine
+import Observation
 
-struct RavenConfig: Codable {
-    var providers: [Provider]
-    var windowOverrides: [ModelWindowOverride]
+nonisolated struct RavenConfig: Codable {
+    var providers: [Provider] = []
+    var windowOverrides: [ModelWindowOverride] = []
     var selectedProviderID: UUID?
     var selectedModelID: String?
-    var selectedClient: String?
+    var selectedClient: ProviderKind?
+    var workdir: String?
+}
 
-    init(providers: [Provider],
-         windowOverrides: [ModelWindowOverride],
-         selectedProviderID: UUID?,
-         selectedModelID: String?,
-         selectedClient: String?) {
-        self.providers = providers
-        self.windowOverrides = windowOverrides
-        self.selectedProviderID = selectedProviderID
-        self.selectedModelID = selectedModelID
-        self.selectedClient = selectedClient
-    }
-
+nonisolated extension RavenConfig {
     init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        providers = try c.decodeIfPresent([Provider].self, forKey: .providers) ?? []
-        windowOverrides = try c.decodeIfPresent([ModelWindowOverride].self, forKey: .windowOverrides) ?? []
-        selectedProviderID = try c.decodeIfPresent(UUID.self, forKey: .selectedProviderID)
-        selectedModelID = try c.decodeIfPresent(String.self, forKey: .selectedModelID)
-        selectedClient = try c.decodeIfPresent(String.self, forKey: .selectedClient)
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        providers = try container.decodeIfPresent([Provider].self, forKey: .providers) ?? []
+        windowOverrides = try container.decodeIfPresent([ModelWindowOverride].self, forKey: .windowOverrides) ?? []
+        selectedProviderID = try container.decodeIfPresent(UUID.self, forKey: .selectedProviderID)
+        selectedModelID = try container.decodeIfPresent(String.self, forKey: .selectedModelID)
+        selectedClient = try container.decodeIfPresent(ProviderKind.self, forKey: .selectedClient)
+        workdir = try container.decodeIfPresent(String.self, forKey: .workdir)
     }
 }
 
-@MainActor
-final class ProviderStore: ObservableObject {
+@Observable
+final class ProviderStore {
     static let shared = ProviderStore()
 
-    nonisolated static var configDirectory: URL {
-        if let override = configDirectoryOverride { return override }
-        return FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".raven")
-    }
-    nonisolated static var configDirectoryOverride: URL? {
-        get { _configDirectoryOverride }
-        set { _configDirectoryOverride = newValue }
-    }
-    nonisolated(unsafe) private static var _configDirectoryOverride: URL?
-    nonisolated static var configFile: URL { configDirectory.appendingPathComponent("config.json") }
+    static var configDirectoryOverride: URL?
 
-    nonisolated static func ensureConfigDirectory() throws {
+    static var configDirectory: URL {
+        configDirectoryOverride ?? URL.homeDirectory.appending(path: ".raven")
+    }
+
+    static var configFile: URL { configDirectory.appending(path: "config.json") }
+
+    static func ensureConfigDirectory() throws {
         try FileManager.default.createDirectory(
             at: configDirectory,
             withIntermediateDirectories: true,
             attributes: [.posixPermissions: 0o700])
     }
 
-    @Published private(set) var providers: [Provider] = []
-    @Published private(set) var models: [UUID: [ModelEntry]] = [:]
-    @Published private(set) var windowOverrides: [ModelWindowOverride] = []
-    @Published private(set) var loading: Set<UUID> = []
-    @Published private(set) var errors: [UUID: String] = [:]
-    @Published var selectedProviderID: UUID?
-    @Published var selectedModelID: String?
-    @Published var selectedClient: ProviderKind = .claude
+    private(set) var providers: [Provider] = []
+    private(set) var models: [UUID: [ModelEntry]] = [:]
+    private(set) var windowOverrides: [ModelWindowOverride] = []
+    private(set) var loading: Set<UUID> = []
+    private(set) var errors: [UUID: String] = [:]
+
+    var selectedProviderID: UUID? {
+        didSet {
+            reconcileModelSelection()
+            persist()
+        }
+    }
+    var selectedModelID: String? {
+        didSet { persist() }
+    }
+    var selectedClient: ProviderKind = .claude {
+        didSet { persist() }
+    }
+    var workdir: URL = .homeDirectory {
+        didSet { persist() }
+    }
+
+    var modelSearch = ""
+    var providerDraft: ProviderDraft?
+    var windowDraft: WindowDraft?
+    var pendingRemoval: Provider?
+    var launchError: String?
+    var isChoosingWorkdir = false
+
+    @ObservationIgnored private var isLoaded = false
 
     private init() {
         load()
@@ -67,17 +78,18 @@ final class ProviderStore: ObservableObject {
     }
 
     private func load() {
+        defer { isLoaded = true }
+        guard FileManager.default.fileExists(atPath: Self.configFile.path(percentEncoded: false)) else { return }
         do {
-            guard FileManager.default.fileExists(atPath: Self.configFile.path) else { return }
             let data = try Data(contentsOf: Self.configFile)
             let config = try JSONDecoder().decode(RavenConfig.self, from: data)
             providers = config.providers
             windowOverrides = config.windowOverrides
             selectedProviderID = config.selectedProviderID ?? providers.first?.id
             selectedModelID = config.selectedModelID
-            if let client = config.selectedClient,
-               let kind = ProviderKind(rawValue: client) {
-                selectedClient = kind
+            selectedClient = config.selectedClient ?? .claude
+            if let path = config.workdir {
+                workdir = URL(filePath: path, directoryHint: .isDirectory)
             }
         } catch {
             NSLog("raven: could not read config: \(error.localizedDescription)")
@@ -85,6 +97,7 @@ final class ProviderStore: ObservableObject {
     }
 
     private func persist() {
+        guard isLoaded else { return }
         do {
             try Self.ensureConfigDirectory()
             let config = RavenConfig(
@@ -92,32 +105,82 @@ final class ProviderStore: ObservableObject {
                 windowOverrides: windowOverrides,
                 selectedProviderID: selectedProviderID,
                 selectedModelID: selectedModelID,
-                selectedClient: selectedClient.rawValue
+                selectedClient: selectedClient,
+                workdir: workdir.path(percentEncoded: false)
             )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            let data = try encoder.encode(config)
-            try data.write(to: Self.configFile, options: [.atomic])
+            try encoder.encode(config).write(to: Self.configFile, options: .atomic)
         } catch {
             NSLog("raven: could not save config: \(error.localizedDescription)")
         }
     }
 
-    func addProvider(name: String, baseURL: String, apiKey: String) {
-        let provider = Provider(name: name.isEmpty ? "Provider" : name,
-                                baseURL: baseURL,
-                                apiKey: apiKey)
-        providers.append(provider)
-        if selectedProviderID == nil {
-            selectedProviderID = provider.id
-        }
-        persist()
-        Task { await refresh(provider) }
+    var selectedProvider: Provider? {
+        providers.first { $0.id == selectedProviderID }
     }
 
-    func updateProvider(_ provider: Provider) {
-        guard let index = providers.firstIndex(where: { $0.id == provider.id }) else { return }
-        providers[index] = provider
+    var selectedModels: [ModelEntry] {
+        selectedProviderID.flatMap { models[$0] } ?? []
+    }
+
+    var selectedModelValid: Bool {
+        guard let id = selectedModelID else { return false }
+        return selectedModels.contains { $0.modelID == id }
+    }
+
+    var isRefreshing: Bool { !loading.isEmpty }
+
+    var workdirLabel: String {
+        let name = workdir.lastPathComponent
+        return name.isEmpty ? "Choose…" : name
+    }
+
+    var groupedModels: [ModelGroup] {
+        let query = modelSearch.trimmingCharacters(in: .whitespaces).lowercased()
+        let filtered = query.isEmpty ? selectedModels : selectedModels.filter {
+            $0.modelID.lowercased().contains(query)
+                || ($0.ownedBy ?? "").lowercased().contains(query)
+        }
+        return Dictionary(grouping: filtered) { $0.ownedBy ?? "other" }
+            .map { ModelGroup(owner: $0.key, models: $0.value.sorted { $0.modelID < $1.modelID }) }
+            .sorted { $0.owner < $1.owner }
+    }
+
+    func isLoading(_ provider: Provider) -> Bool {
+        loading.contains(provider.id)
+    }
+
+    func error(for provider: Provider) -> String? {
+        errors[provider.id]
+    }
+
+    func status(of provider: Provider) -> ProviderStatus {
+        if loading.contains(provider.id) { return .loading }
+        if errors[provider.id] != nil { return .failed }
+        let count = models[provider.id]?.count ?? 0
+        return count == 0 ? .empty : .ready(count)
+    }
+
+    func beginAddingProvider() {
+        providerDraft = ProviderDraft()
+    }
+
+    func beginEditing(_ provider: Provider) {
+        providerDraft = ProviderDraft(provider)
+    }
+
+    func commitProviderDraft() {
+        guard let draft = providerDraft, let provider = draft.validated() else { return }
+        if let index = providers.firstIndex(where: { $0.id == provider.id }) {
+            providers[index] = provider
+        } else {
+            providers.append(provider)
+            if selectedProviderID == nil {
+                selectedProviderID = provider.id
+            }
+        }
+        providerDraft = nil
         persist()
         Task { await refresh(provider) }
     }
@@ -132,24 +195,25 @@ final class ProviderStore: ObservableObject {
         persist()
     }
 
-    var selectedProvider: Provider? {
-        providers.first { $0.id == selectedProviderID }
+    var isConfirmingRemoval: Bool {
+        get { pendingRemoval != nil }
+        set { if !newValue { pendingRemoval = nil } }
     }
 
-    var selectedModels: [ModelEntry] {
-        guard let id = selectedProviderID else { return [] }
-        return models[id] ?? []
+    var isShowingLaunchError: Bool {
+        get { launchError != nil }
+        set { if !newValue { launchError = nil } }
     }
 
     func windowOverride(providerID: UUID, modelID: String) -> Int? {
         windowOverrides.first {
-            Self.matches($0, providerID: providerID, modelID: modelID)
+            $0.providerID == providerID && $0.modelID == modelID
         }?.contextWindow
     }
 
     func setWindowOverride(providerID: UUID, modelID: String, contextWindow: Int?) {
         windowOverrides.removeAll {
-            Self.matches($0, providerID: providerID, modelID: modelID)
+            $0.providerID == providerID && $0.modelID == modelID
         }
         if let contextWindow, contextWindow > 0 {
             windowOverrides.append(
@@ -161,19 +225,59 @@ final class ProviderStore: ObservableObject {
     }
 
     func effectiveWindow(providerID: UUID, modelID: String) -> Int? {
-        if let override = windowOverride(providerID: providerID, modelID: modelID) {
-            return override
-        }
-        return models[providerID]?.first { $0.modelID == modelID }?.contextWindow
+        windowOverride(providerID: providerID, modelID: modelID)
+            ?? models[providerID]?.first { $0.modelID == modelID }?.contextWindow
     }
 
-    private static func matches(_ override: ModelWindowOverride,
-                                providerID: UUID, modelID: String) -> Bool {
-        override.providerID == providerID && override.modelID == modelID
+    func windowBadge(for entry: ModelEntry) -> WindowBadge {
+        let override = selectedProviderID.flatMap {
+            windowOverride(providerID: $0, modelID: entry.modelID)
+        }
+        if override == nil, entry.contextWindow == nil {
+            return WindowBadge(label: "\(ContextWindow.label(ContextWindow.fallback)) default", isOverride: false)
+        }
+        return WindowBadge(label: ContextWindow.label(override ?? entry.contextWindow ?? ContextWindow.fallback),
+                           isOverride: override != nil)
+    }
+
+    func beginEditingWindow(for entry: ModelEntry) {
+        guard let providerID = selectedProviderID else { return }
+        windowDraft = WindowDraft(providerID: providerID,
+                                  modelID: entry.modelID,
+                                  current: effectiveWindow(providerID: providerID, modelID: entry.modelID))
+    }
+
+    func resetWindow(for entry: ModelEntry) {
+        guard let providerID = selectedProviderID else { return }
+        setWindowOverride(providerID: providerID, modelID: entry.modelID, contextWindow: nil)
+    }
+
+    func commitWindowDraft() {
+        guard let draft = windowDraft else { return }
+        if draft.useAdvertised {
+            setWindowOverride(providerID: draft.providerID, modelID: draft.modelID, contextWindow: nil)
+        } else if let tokens = draft.tokens {
+            setWindowOverride(providerID: draft.providerID, modelID: draft.modelID, contextWindow: tokens)
+        }
+        windowDraft = nil
+    }
+
+    func launch() {
+        guard let provider = selectedProvider,
+              let model = selectedModelID,
+              selectedModelValid else { return }
+        Task {
+            do {
+                try await Launcher.launch(provider: provider, model: model,
+                                          client: selectedClient, workdir: workdir)
+            } catch {
+                launchError = error.localizedDescription
+            }
+        }
     }
 
     func refreshAll() async {
-        await withTaskGroup(of: Void.self) { group in
+        await withTaskGroup { group in
             for provider in providers {
                 group.addTask { await self.refresh(provider) }
             }
@@ -186,16 +290,23 @@ final class ProviderStore: ObservableObject {
         errors[provider.id] = nil
         defer {
             loading.remove(provider.id)
+            reconcileModelSelection()
         }
-
         do {
-            let entries = try await ModelsClient.fetch(provider: provider)
-            models[provider.id] = entries
+            models[provider.id] = try await ModelsClient.fetch(provider: provider)
             return true
         } catch {
             models[provider.id] = []
             errors[provider.id] = error.localizedDescription
             return false
+        }
+    }
+
+    private func reconcileModelSelection() {
+        let models = selectedModels
+        guard !models.isEmpty else { return }
+        if !models.contains(where: { $0.modelID == selectedModelID }) {
+            selectedModelID = models.first?.modelID
         }
     }
 }

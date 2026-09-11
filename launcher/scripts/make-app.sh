@@ -2,12 +2,15 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-BUILD="$APP_DIR/.build/release/Raven"
+BIN_DIR="$(cd "$APP_DIR" && swift build -c release --show-bin-path)"
+BUILD="$BIN_DIR/Raven"
 BUNDLE="$APP_DIR/build/Raven.app"
 
 [ -x "$BUILD" ] || { echo "error: run 'swift build -c release' first" >&2; exit 1; }
 
-"$APP_DIR/scripts/make-icon.sh"
+if command -v magick >/dev/null && command -v rsvg-convert >/dev/null; then
+    "$APP_DIR/scripts/make-icon.sh"
+fi
 
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
@@ -27,34 +30,29 @@ cat > "$BUNDLE/Contents/Info.plist" <<'PLIST'
     <key>CFBundleIdentifier</key>
     <string>com.raven.launcher</string>
     <key>CFBundleVersion</key>
-    <string>1</string>
+    <string>2</string>
     <key>CFBundleShortVersionString</key>
-    <string>1.0</string>
+    <string>2.0</string>
     <key>CFBundlePackageType</key>
     <string>APPL</string>
+    <key>CFBundleInfoDictionaryVersion</key>
+    <string>6.0</string>
     <key>CFBundleExecutable</key>
     <string>Raven</string>
     <key>CFBundleIconFile</key>
-    <string>AppIcon.icns</string>
+    <string>AppIcon</string>
     <key>CFBundleIconName</key>
     <string>AppIcon</string>
-    <key>CFBundleIconFiles</key>
-    <array>
-        <string>AppIcon</string>
-        <string>AppIcon.icns</string>
-    </array>
     <key>LSMinimumSystemVersion</key>
-    <string>13.0</string>
-    <key>NSHighResolutionCapable</key>
-    <true/>
-    <key>NSSupportsAutomaticTermination</key>
-    <false/>
-    <key>NSSupportsSuddenTermination</key>
-    <false/>
+    <string>27.0</string>
+    <key>LSApplicationCategoryType</key>
+    <string>public.app-category.developer-tools</string>
+    <key>NSPrincipalClass</key>
+    <string>NSApplication</string>
 </dict>
 </plist>
 PLIST
 
-codesign --force --sign - "$BUNDLE" 2>/dev/null || true
+codesign --force --sign - "$BUNDLE"
 
 echo "Built $BUNDLE"

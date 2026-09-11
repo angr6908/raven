@@ -7,16 +7,16 @@ enum ModelsClientError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .badURL: return "The base URL is not valid"
-        case .http(let code): return "HTTP \(code)"
-        case .empty: return "No models returned"
+        case .badURL: "The base URL is not valid"
+        case .http(let code): "HTTP \(code)"
+        case .empty: "No models returned"
         }
     }
 }
 
 enum ModelsClient {
     static func fetch(provider: Provider) async throws -> [ModelEntry] {
-        var candidates = [provider.v1URL + "/models"]
+        var candidates = [provider.modelsURL]
         let bare = provider.rootURL + "/models"
         if bare != candidates[0] { candidates.append(bare) }
 
@@ -34,7 +34,6 @@ enum ModelsClient {
     private static func fetchModels(at urlString: String, apiKey: String) async throws -> [ModelEntry] {
         guard let url = URL(string: urlString) else { throw ModelsClientError.badURL }
         var request = URLRequest(url: url, timeoutInterval: 15)
-        request.httpMethod = "GET"
         if !apiKey.isEmpty {
             request.setValue("Bearer \(apiKey)", forHTTPHeaderField: "Authorization")
         }
@@ -44,8 +43,7 @@ enum ModelsClient {
             throw ModelsClientError.http(http.statusCode)
         }
 
-        let decoded = try JSONDecoder().decode(ModelsResponse.self, from: data)
-        let entries = decoded.entries
+        let entries = try JSONDecoder().decode(ModelsResponse.self, from: data).entries
         guard !entries.isEmpty else { throw ModelsClientError.empty }
         return entries
     }

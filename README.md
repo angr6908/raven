@@ -51,6 +51,25 @@ Keys: `Label` `com.raven`; `ProgramArguments`
 `ThrottleInterval` 10; `ProcessType` `Interactive`; std out/err to
 `~/Library/Logs/raven/`. Paths must be absolute.
 
+## Launcher
+
+`launcher/` is a native macOS 27 SwiftUI app (Swift 6.4, Observation, Liquid
+Glass) that lists a provider's models and launches Claude Code or Codex against
+one in Terminal. Its config lives in `~/.raven/config.json`.
+
+Needs Command Line Tools for Xcode 27 (`softwareupdate --list`), no Xcode.
+
+```bash
+cd launcher && swift build -c release && scripts/make-app.sh   # → build/Raven.app
+swift test -Xswiftc -plugin-path \
+  -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
+```
+
+The 27.0 SDK declares `@State` as a compiler macro whose plugin ships only
+inside Xcode, so the launcher keeps all view state in `@Observable` objects and
+uses no `@State`. The same applies to Swift Testing's `@Test`, hence the
+explicit plugin path above.
+
 ## When nothing comes up
 
 1. `plutil -lint ~/Library/LaunchAgents/com.raven.plist`

@@ -2,34 +2,27 @@ import SwiftUI
 
 @main
 struct RavenApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) private var appDelegate
-    @StateObject private var store = ProviderStore.shared
+    private let store = ProviderStore.shared
 
     var body: some Scene {
-        WindowGroup {
+        Window("Raven", id: "main") {
             ContentView()
-                .environmentObject(store)
-                .frame(minWidth: 720, minHeight: 560)
+                .environment(store)
+                .frame(minWidth: 760, minHeight: 560)
         }
-        .windowStyle(.automatic)
+        .defaultSize(width: 960, height: 640)
         .commands {
-            CommandGroup(replacing: .newItem) {}
             CommandMenu("Raven") {
-                Button("Refresh Models") {
+                Button("Add Provider…", systemImage: "plus") {
+                    store.beginAddingProvider()
+                }
+                .keyboardShortcut("n", modifiers: .command)
+                Button("Refresh Models", systemImage: "arrow.clockwise") {
                     Task { await store.refreshAll() }
                 }
                 .keyboardShortcut("r", modifiers: .command)
+                .disabled(store.providers.isEmpty)
             }
         }
-    }
-}
-
-final class AppDelegate: NSObject, NSApplicationDelegate {
-    func applicationDidFinishLaunching(_ notification: Notification) {
-        NSApp.setActivationPolicy(.regular)
-    }
-
-    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool {
-        false
     }
 }
