@@ -1,0 +1,63 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "solid": "display-p3:0.90588,0.88235,0.83137,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "solid": "display-p3:0.10196,0.16863,0.16471,1.00000"
+      }
+    },
+    {
+      "appearance": "tinted",
+      "value": {
+        "solid": "extended-gray:0.35000,1.00000"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "layers": [
+        {
+          "name": "Raven",
+          "image-name": "Raven.svg",
+          "fill-specializations": [
+            {
+              "value": {
+                "solid": "display-p3:0.10196,0.16863,0.16471,1.00000"
+              }
+            },
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "display-p3:0.90588,0.88235,0.83137,1.00000"
+              }
+            },
+            {
+              "appearance": "tinted",
+              "value": {
+                "solid": "extended-gray:1.00000,1.00000"
+              }
+            }
+          ]
+        }
+      ],
+      "lighting": "individual",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.3
+      },
+      "specular": true,
+      "translucency": {
+        "enabled": true,
+        "value": 0.18
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared"
+  }
+}

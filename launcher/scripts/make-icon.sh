@@ -2,29 +2,17 @@
 set -euo pipefail
 
 APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
-WORK="$(mktemp -d /tmp/raven-icon.XXXXXX)"
-SVG="$APP_DIR/resources/RavenLogo.svg"
-ICONSET="$WORK/raven.iconset"
+ICON="$APP_DIR/resources/AppIcon.icon"
+ICTOOL="/Applications/Icon Composer.app/Contents/Executables/ictool"
 
-mkdir "$ICONSET"
-magick -size 1024x1024 gradient:'#111827-#3730a3' "$WORK/background.png"
-magick -size 1024x1024 xc:none -fill white \
-    -draw 'roundrectangle 96,96 927,927 185,185' "$WORK/mask.png"
-magick "$WORK/background.png" "$WORK/mask.png" -alpha off \
-    -compose CopyOpacity -composite "$WORK/rounded.png"
-rsvg-convert -w 560 -h 560 "$SVG" -o "$WORK/logo.png"
-magick "$WORK/rounded.png" "$WORK/logo.png" -gravity center \
-    -composite "$WORK/icon-1024.png"
+python3 "$APP_DIR/scripts/generate-app-icon.py"
 
-magick "$WORK/icon-1024.png" -resize 16x16 "$ICONSET/icon_16x16.png"
-magick "$WORK/icon-1024.png" -resize 32x32 "$ICONSET/icon_16x16@2x.png"
-magick "$WORK/icon-1024.png" -resize 32x32 "$ICONSET/icon_32x32.png"
-magick "$WORK/icon-1024.png" -resize 64x64 "$ICONSET/icon_32x32@2x.png"
-magick "$WORK/icon-1024.png" -resize 128x128 "$ICONSET/icon_128x128.png"
-magick "$WORK/icon-1024.png" -resize 256x256 "$ICONSET/icon_128x128@2x.png"
-magick "$WORK/icon-1024.png" -resize 256x256 "$ICONSET/icon_256x256.png"
-magick "$WORK/icon-1024.png" -resize 512x512 "$ICONSET/icon_256x256@2x.png"
-magick "$WORK/icon-1024.png" -resize 512x512 "$ICONSET/icon_512x512.png"
-magick "$WORK/icon-1024.png" -resize 1024x1024 "$ICONSET/icon_512x512@2x.png"
+[ -f "$ICON/icon.json" ] || { echo "error: missing $ICON/icon.json" >&2; exit 1; }
 
-iconutil -c icns "$ICONSET" -o "$APP_DIR/resources/AppIcon.icns"
+if [ -x "$ICTOOL" ]; then
+    mkdir -p "$APP_DIR/build"
+    "$ICTOOL" "$ICON" --export-image --output-file "$APP_DIR/build/icon-light.png" \
+        --platform macOS --rendition Default --width 1024 --height 1024 --scale 1
+    "$ICTOOL" "$ICON" --export-image --output-file "$APP_DIR/build/icon-dark.png" \
+        --platform macOS --rendition Dark --width 1024 --height 1024 --scale 1
+fi

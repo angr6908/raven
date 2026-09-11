@@ -5,54 +5,54 @@ APP_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 BIN_DIR="$(cd "$APP_DIR" && swift build -c release --show-bin-path)"
 BUILD="$BIN_DIR/Raven"
 BUNDLE="$APP_DIR/build/Raven.app"
+PARTIAL="$APP_DIR/build/icon-partial.plist"
+ACTOOL="/Applications/Xcode.app/Contents/Developer/usr/bin/actool"
+ICON="$APP_DIR/resources/AppIcon.icon"
 
 [ -x "$BUILD" ] || { echo "error: run 'swift build -c release' first" >&2; exit 1; }
+[ -x "$ACTOOL" ] || { echo "error: Xcode actool is required" >&2; exit 1; }
 
-if command -v magick >/dev/null && command -v rsvg-convert >/dev/null; then
-    "$APP_DIR/scripts/make-icon.sh"
-fi
+"$APP_DIR/scripts/make-icon.sh"
 
 rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 
 cp "$BUILD" "$BUNDLE/Contents/MacOS/Raven"
-cp "$APP_DIR/resources/AppIcon.icns" "$BUNDLE/Contents/Resources/AppIcon.icns"
 
-cat > "$BUNDLE/Contents/Info.plist" <<'PLIST'
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-    <key>CFBundleName</key>
-    <string>Raven</string>
-    <key>CFBundleDisplayName</key>
-    <string>Raven</string>
-    <key>CFBundleIdentifier</key>
-    <string>com.raven.launcher</string>
-    <key>CFBundleVersion</key>
-    <string>2</string>
-    <key>CFBundleShortVersionString</key>
-    <string>2.0</string>
-    <key>CFBundlePackageType</key>
-    <string>APPL</string>
-    <key>CFBundleInfoDictionaryVersion</key>
-    <string>6.0</string>
-    <key>CFBundleExecutable</key>
-    <string>Raven</string>
-    <key>CFBundleIconFile</key>
-    <string>AppIcon</string>
-    <key>CFBundleIconName</key>
-    <string>AppIcon</string>
-    <key>LSMinimumSystemVersion</key>
-    <string>27.0</string>
-    <key>LSApplicationCategoryType</key>
-    <string>public.app-category.developer-tools</string>
-    <key>NSPrincipalClass</key>
-    <string>NSApplication</string>
-</dict>
-</plist>
-PLIST
+DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
+    "$ACTOOL" "$ICON" \
+    --compile "$BUNDLE/Contents/Resources" \
+    --platform macosx \
+    --minimum-deployment-target 27.0 \
+    --app-icon AppIcon \
+    --output-partial-info-plist "$PARTIAL"
+
+python3 - <<PY
+import plistlib
+from pathlib import Path
+info = {
+    "CFBundleName": "Raven",
+    "CFBundleDisplayName": "Raven",
+    "CFBundleIdentifier": "com.raven.launcher",
+    "CFBundleVersion": "2",
+    "CFBundleShortVersionString": "2.0",
+    "CFBundlePackageType": "APPL",
+    "CFBundleInfoDictionaryVersion": "6.0",
+    "CFBundleExecutable": "Raven",
+    "LSMinimumSystemVersion": "27.0",
+    "LSApplicationCategoryType": "public.app-category.developer-tools",
+    "NSPrincipalClass": "NSApplication",
+}
+partial_path = Path("$PARTIAL")
+if partial_path.exists():
+    with partial_path.open("rb") as handle:
+        info.update(plistlib.load(handle))
+info.setdefault("CFBundleIconName", "AppIcon")
+info.setdefault("CFBundleIconFile", "AppIcon")
+dest = Path("$BUNDLE/Contents/Info.plist")
+with dest.open("wb") as handle:
+    plistlib.dump(info, handle)
+PY
 
 codesign --force --sign - "$BUNDLE"
-
 echo "Built $BUNDLE"
