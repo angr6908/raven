@@ -51,11 +51,46 @@ Keys: `Label` `com.raven`; `ProgramArguments`
 `ThrottleInterval` 10; `ProcessType` `Interactive`; std out/err to
 `~/Library/Logs/raven/`. Paths must be absolute.
 
+## Shell commands
+
+`raven.sh` at the repo root is the interactive launcher: pick a client (Claude
+Code / Codex / grok) and a model, or name both inline. Typing `0` at the client
+picker runs Edit Default, which saves a pair to `defaults.conf`; a later blank
+reply launches it. Two symlinks put it on `PATH` (e.g. `~/.local/bin`):
+
+```bash
+ln -sf "$PWD/raven.sh" ~/.local/bin/raven
+ln -sf "$PWD/raven.sh" ~/.local/bin/r
+```
+
+`raven` opens the pickers; `r` skips them and launches the pair in
+`defaults.conf` directly — the same thing a blank reply in both pickers does.
+Both take the script's arguments: `r codex minimax-m3 high`,
+`raven --dir ~/src/app …`.
+
+`r` is also a zsh builtin (history redo), which outranks `PATH`, so zsh needs
+an alias over the symlink — bash does not:
+
+```zsh
+alias r="$HOME/.local/bin/r"
+```
+
+The alias must point at the symlink, never at `raven.sh` itself: the script
+reads `$0` to tell `r` from `raven`.
+
 ## Launcher
 
 `launcher/` is a native macOS 27 SwiftUI app (Swift 6.4, Observation, Liquid
 Glass) that lists a provider's models and launches Claude Code or Codex against
-one in Terminal. Its config lives in `~/.raven/config.json`.
+one in Terminal. Its config lives in `~/Documents/raven/data/config.json`.
+
+Two columns. The sidebar is a filter — *All Models*, *Pinned*, *Recents*, then
+one row per provider — over a single searchable list of every model across
+every provider, so there is no "pick a provider first" step. *All Models* and
+*Pinned* group by provider; a single provider groups by `owned_by`. The bottom
+`safeAreaBar` is the whole launch action: selected model, client, folder,
+**Launch** (⌘↩). Per-model settings (pin, context window) live in the row's
+context menu and the Launch menu; there is no details pane.
 
 Needs Command Line Tools for Xcode 27 (`softwareupdate --list`), no Xcode.
 
@@ -66,9 +101,22 @@ swift test -Xswiftc -plugin-path \
 ```
 
 The 27.0 SDK declares `@State` as a compiler macro whose plugin ships only
-inside Xcode, so the launcher keeps all view state in `@Observable` objects and
-uses no `@State`. The same applies to Swift Testing's `@Test`, hence the
-explicit plugin path above.
+inside Xcode, so the launcher keeps all view state in `@Observable` objects
+(`ProviderStore` for persisted data, `Workspace` for transient UI) and uses no
+`@State`. The same applies to Swift Testing's `@Test`, hence the explicit
+plugin path above.
+
+Do not add an `.inspector` column: on macOS 27 `.inspector` combined with a
+bottom `safeAreaBar` holding an AppKit-backed control (the segmented `Picker`,
+or adjacent glass buttons) loops AppKit constraint updates and the window
+throws on launch. Without it the same bar is fine.
+
+`Menu` renders its own label — `.font`/`.foregroundStyle`, applied inside or
+outside the label, are both ignored under `.menuStyle(.borderlessButton)`, so
+row values that need styling are plain `Text`.
+
+`RAVEN_DATA_DIR` overrides `~/Documents/raven/data` (useful for trying the
+first-launch flow against an empty directory).
 
 ## When nothing comes up
 

@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>Label</key>
+	<string>com.raven</string>
+	<key>ProgramArguments</key>
+	<array>
+		<string>/Users/hzhou/Documents/raven/core/raven</string>
+		<string>-working-dir</string>
+		<string>/Users/hzhou/Documents/raven</string>
+		<string>-data-dir</string>
+		<string>/Users/hzhou/Documents/raven/data</string>
+	</array>
+	<key>WorkingDirectory</key>
+	<string>/Users/hzhou/Documents/raven</string>
+	<key>RunAtLoad</key>
+	<true/>
+	<key>KeepAlive</key>
+	<true/>
+	<key>ThrottleInterval</key>
+	<integer>10</integer>
+	<key>ProcessType</key>
+	<string>Interactive</string>
+	<key>StandardOutPath</key>
+	<string>/Users/hzhou/Library/Logs/raven/stdout.log</string>
+	<key>StandardErrorPath</key>
+	<string>/Users/hzhou/Library/Logs/raven/stderr.log</string>
+</dict>
+</plist>

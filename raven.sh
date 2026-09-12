@@ -6,7 +6,7 @@
 # launch it against the local raven proxy. Also usable from a terminal:
 #
 #   ./raven.sh                        interactive
-#   c                                    launch the saved default combination directly (no pickers)
+#   r                                    launch the saved default combination directly (no pickers)
 #   ./raven.sh claude kimi-k3         launch Claude Code on kimi-k3
 #   ./raven.sh codex minimax-m3 high  launch Codex on minimax-m3, high effort
 #   ./raven.sh grok muse-spark-1.2-contributor@Vercel high  launch grok on the proxy model (web search off)
@@ -581,15 +581,17 @@ load_defaults
 # interactive client menu never ran — a command-line client (`… codex resume`)
 # would otherwise die on the unset variable under `set -u`.
 BLANK_CLIENT=""
-# The bare `c` command (the `c` symlink in ~/.local/bin) skips every picker
-# and launches the saved default combination — the default client on the
-# default model — the same thing a blank reply in both pickers picks. Named
-# arguments still win: `c claude kimi-k3` behaves exactly like the full
-# invocation.
-if [ "$INVOKED_AS" = c ] && [ -z "$CLIENT" ] && [ -z "$MODEL" ] && [ -z "$MODEL_OPT" ] && [ -z "$RESUME" ]; then
+# The bare `r` command (the `r` symlink in ~/.local/bin, like the legacy `c`)
+# skips every picker and launches the saved default combination — the default
+# client on the default model — the same thing a blank reply in both pickers
+# picks. Named arguments still win: `r claude kimi-k3` behaves exactly like the
+# full invocation.
+case "$INVOKED_AS" in
+  c|r) if [ -z "$CLIENT" ] && [ -z "$MODEL" ] && [ -z "$MODEL_OPT" ] && [ -z "$RESUME" ]; then
   CLIENT="${DEF_CLIENT:-claude}"
   BLANK_CLIENT=1
-fi
+fi ;;
+esac
 
 if [ -z "$CLIENT" ]; then
   echo
