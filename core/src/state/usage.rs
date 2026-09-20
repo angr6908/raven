@@ -468,12 +468,12 @@ pub fn default_prices() -> HashMap<String, PriceEntry> {
         (
             "deepseek/deepseek-v4-flash".to_string(),
             PriceEntry {
-                input: 0.22,
-                output: 0.66,
-                cached: 0.007,
-                input_peak: 0.44,
-                output_peak: 1.32,
-                cached_peak: 0.014,
+                input: 0.15,
+                output: 0.6,
+                cached: 0.003,
+                input_peak: 0.3,
+                output_peak: 1.2,
+                cached_peak: 0.006,
                 ..PriceEntry::default()
             },
         ),

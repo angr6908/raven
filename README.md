@@ -56,27 +56,40 @@ Keys: `Label` `com.raven`; `ProgramArguments`
 `raven.sh` at the repo root is the interactive launcher: pick a client (Claude
 Code / Codex / grok) and a model, or name both inline. Typing `0` at the client
 picker runs Edit Default, which saves a pair to `defaults.conf`; a later blank
-reply launches it. Two symlinks put it on `PATH` (e.g. `~/.local/bin`):
-
-```bash
-ln -sf "$PWD/raven.sh" ~/.local/bin/raven
-ln -sf "$PWD/raven.sh" ~/.local/bin/r
-```
+reply launches it.
 
 `raven` opens the pickers; `r` skips them and launches the pair in
 `defaults.conf` directly — the same thing a blank reply in both pickers does.
 Both take the script's arguments: `r codex minimax-m3 high`,
 `raven --dir ~/src/app …`.
 
-`r` is also a zsh builtin (history redo), which outranks `PATH`, so zsh needs
-an alias over the symlink — bash does not:
+### Setup on a new machine
 
-```zsh
-alias r="$HOME/.local/bin/r"
+From the repo root — `~/.local/bin` must exist and be on `PATH`; a fresh macOS
+ships with neither:
+
+```bash
+mkdir -p ~/.local/bin
+ln -sf "$PWD/raven.sh" ~/.local/bin/raven
+ln -sf "$PWD/raven.sh" ~/.local/bin/r
 ```
 
-The alias must point at the symlink, never at `raven.sh` itself: the script
-reads `$0` to tell `r` from `raven`.
+Then append the rc lines. zsh (the macOS default) needs both; bash only the
+first, in `~/.bashrc`:
+
+```zsh
+export PATH="$HOME/.local/bin:$PATH"   # zsh: ~/.zshrc; bash: ~/.bashrc
+alias r="$HOME/.local/bin/r"           # zsh only
+```
+
+`r` is also a zsh builtin (history redo), which outranks `PATH`, so zsh needs
+an alias over the symlink — bash has no such builtin and resolves the symlink
+straight off `PATH`. The alias must point at the symlink, never at `raven.sh`
+itself: the script reads `$0` to tell `r` from `raven`. Open a new shell (or
+source the rc file), and `raven` / `r` work.
+
+A macOS login bash reads `~/.bash_profile` before `~/.bashrc`; if one exists,
+put the `export PATH` line there instead.
 
 ## Launcher
 

@@ -42,13 +42,13 @@ set -euo pipefail
 # terminal launch keeps the shell's own directory.
 INVOKED_PWD="$PWD"
 
-# How this script was invoked: the `c` symlink skips every picker and launches
+# How this script was invoked: the `r` symlink skips every picker and launches
 # the saved default combination straight away. Captured before SELF resolves
 # the symlink below back to this file.
 INVOKED_AS="$(basename "$0")"
 
 # Double-clicking starts in $HOME, so anchor to this file's directory. Symlinks
-# are resolved first: invoked through one (e.g. ~/.local/bin/code), BASH_SOURCE
+# are resolved first: invoked through one (e.g. ~/.local/bin/r), BASH_SOURCE
 # is the link itself, and anchoring there would look for configs, auths and
 # plugins next to the link instead of next to the real script.
 SELF="${BASH_SOURCE[0]}"
@@ -317,10 +317,10 @@ grok_real_home_anchor() {
   windows="$(model_windows "$ids" | awk -F'\t' '{printf "%s%s=%s", sep, $1, $2; sep=","}')"
   ruby -rset -e '
     path, base, key, backend, ids, def_model, windows = ARGV
-    windows = windows.to_s.split(",").filter_map { |pair|
+    windows = windows.to_s.split(",").map { |pair|
       id, win = pair.split("=", 2)
       [id, win] if id && win && !win.empty?
-    }.to_h
+    }.compact.to_h
     ids = ids.split(",").reject(&:empty?)
     lines = (File.read(path) rescue "").lines
     text  = lines.join
@@ -581,13 +581,13 @@ load_defaults
 # interactive client menu never ran — a command-line client (`… codex resume`)
 # would otherwise die on the unset variable under `set -u`.
 BLANK_CLIENT=""
-# The bare `r` command (the `r` symlink in ~/.local/bin, like the legacy `c`)
+# The bare `r` command (the `r` symlink in ~/.local/bin)
 # skips every picker and launches the saved default combination — the default
 # client on the default model — the same thing a blank reply in both pickers
 # picks. Named arguments still win: `r claude kimi-k3` behaves exactly like the
 # full invocation.
 case "$INVOKED_AS" in
-  c|r) if [ -z "$CLIENT" ] && [ -z "$MODEL" ] && [ -z "$MODEL_OPT" ] && [ -z "$RESUME" ]; then
+  r) if [ -z "$CLIENT" ] && [ -z "$MODEL" ] && [ -z "$MODEL_OPT" ] && [ -z "$RESUME" ]; then
   CLIENT="${DEF_CLIENT:-claude}"
   BLANK_CLIENT=1
 fi ;;
@@ -671,6 +671,13 @@ fi
 printf '%s\n' "$MODELS_RAW" | cut -f1 | grep -qx -- "$MODEL" \
   || die "model '$MODEL' is not served by the proxy — see: $0 models"
 
+# Nothing under ~/Downloads is ever a project, so a claude launch from the home
+# directory would land in a folder of downloads. Send it to ~/Downloads instead;
+# an explicit --dir and every other client still get the invoked directory.
+if [ -z "$WORKDIR" ] && [ "$CLIENT" = claude ] && [ "$INVOKED_PWD" = "$HOME" ]; then
+  [ -d "$HOME/Downloads" ] && WORKDIR="$HOME/Downloads"
+fi
+
 # Never asked for: the shell's own directory is almost always the project, and
 # --dir covers the rest. A Finder double-click has no better answer than $HOME.
 [ -n "$WORKDIR" ] || WORKDIR="$INVOKED_PWD"
@@ -678,6 +685,73 @@ printf '%s\n' "$MODELS_RAW" | cut -f1 | grep -qx -- "$MODEL" \
 # failure, and the error should still name what was asked for.
 WANTED_DIR="$WORKDIR"
 WORKDIR="$(resolve_dir "$WORKDIR")" || die "not a directory: $WANTED_DIR"
+
+# ------------------------------------------------------------ workspace trust ---
+# Claude Code's "Accessing workspace / Is this a project you trust?" interstitial
+# is gated on a per-directory flag in ~/.claude.json — global config, not a
+# settings.json key — and nothing on the command line silences it:
+# --dangerously-skip-permissions only skips permission prompts, and -p skips the
+# dialog only because a non-interactive run has nobody to ask. So a launcher has
+# to write the flag the dialog itself would have written.
+#
+# Two entries:
+#   "/"        everything that is not inside a repository. The gate walks up from
+#              the working directory and stops at a repo root, so "/" covers
+#              ~/Downloads and the like but never a repo.
+#   <repo root> the repository the launch is pointed at — the root, not the
+#              working directory inside it: a nested repo is a boundary, and the
+#              root is the key Claude Code records when you accept the dialog
+#              interactively.
+#
+# Only ever adds the key. A malformed config may hold something other than an
+# object where the entries go, so anything else found there is left untouched;
+# breaking ~/.claude.json would cost the user far more than this dialog.
+TRUST_HOME="${HOME:-}"
+if [ "$CLIENT" = claude ] && [ -n "$TRUST_HOME" ] && [ -d "$TRUST_HOME" ]; then
+  TRUST_JSON="$TRUST_HOME/.claude.json"
+  TRUST_DIR="$(dirname "$TRUST_JSON")"
+  # --show-toplevel prints the main checkout for a worktree, which is the key
+  # Claude Code resolves there too. Outside a repository it fails, leaving the
+  # "/" entry to cover the directory.
+  TRUST_ROOT="$(git -C "$WORKDIR" rev-parse --show-toplevel 2>/dev/null || true)"
+  if [ -n "$TRUST_ROOT" ]; then
+    TRUST_ROOT="$(resolve_dir "$TRUST_ROOT")" || TRUST_ROOT=""
+  fi
+  if [ -w "$TRUST_DIR" ] && { [ ! -e "$TRUST_JSON" ] || [ -w "$TRUST_JSON" ]; }; then
+    TRUST_NEW="$(mktemp "$TRUST_DIR/.claude.json.XXXXXX")" || TRUST_NEW=""
+    if [ -n "$TRUST_NEW" ]; then
+      # Ruby and not jq: ruby -i renames the new file over the old one, so a
+      # session reading the config while this runs sees either whole version,
+      # never a truncated one. `mv` in the shell would work too, but the write
+      # and the replace are one step here.
+      if ! TRUST_JSON="$TRUST_JSON" TRUST_NEW="$TRUST_NEW" TRUST_ROOT="$TRUST_ROOT" ruby -rjson -e '
+        path, out, root = ENV.values_at("TRUST_JSON", "TRUST_NEW", "TRUST_ROOT")
+        config = begin
+          JSON.parse(File.read(path))
+        rescue Errno::ENOENT
+          {}
+        rescue JSON::ParserError
+          nil
+        end
+        if config.is_a?(Hash)
+          projects = config["projects"]
+          projects = config["projects"] = {} unless projects.is_a?(Hash)
+          # "" if git is unavailable, which projects[""] would never match.
+          [root, "/"].reject { |key| key.to_s.empty? }.each do |key|
+            entry = projects[key]
+            entry = projects[key] = {} unless entry.is_a?(Hash)
+            entry["hasTrustDialogAccepted"] = true
+          end
+          File.write(out, JSON.pretty_generate(config) + "\n")
+          File.rename(out, path)
+        end
+      '; then
+        echo "raven: could not record workspace trust in $TRUST_JSON" >&2
+      fi
+      /bin/rm -f "$TRUST_NEW"
+    fi
+  fi
+fi
 
 # Effort is passed only when it was actually asked for. Every client treats the
 # flag as a setting for the whole session, so defaulting it here would pin the

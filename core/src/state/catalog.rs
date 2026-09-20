@@ -45,12 +45,12 @@ const DEEPSEEK_PRICES: &[(&str, DeepSeekPrice)] = &[
     (
         "deepseek flash v",
         DeepSeekPrice {
-            input: 0.22,
-            output: 0.66,
-            cache_read: 0.007,
-            peak_input: 0.44,
-            peak_output: 1.32,
-            peak_cache_read: 0.014,
+            input: 0.15,
+            output: 0.6,
+            cache_read: 0.003,
+            peak_input: 0.3,
+            peak_output: 1.2,
+            peak_cache_read: 0.006,
             efforts: &["low", "high", "max"],
             context: 1_000_000,
         },

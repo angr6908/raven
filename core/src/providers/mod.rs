@@ -57,6 +57,10 @@ impl Provider {
         matches!(self, Self::ChatCompletions { .. })
     }
 
+    pub fn is_cerebras(&self) -> bool {
+        matches!(self, Self::ChatCompletions { base_url, .. } if base_url.contains("api.cerebras.ai"))
+    }
+
     pub async fn send(
         &self,
         app: &App,
