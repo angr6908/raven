@@ -23,16 +23,44 @@ nonisolated struct RFC3339Date: Decodable, Equatable {
     }
 
     static func parse(_ string: String) -> Date? {
-        let plain = ISO8601DateFormatter()
-        plain.formatOptions = [.withInternetDateTime]
-        if let date = plain.date(from: string) { return date }
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        if let date = fractional.date(from: string) { return date }
-        let bare = ISO8601DateFormatter()
-        bare.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
-        return bare.date(from: string)
+        cacheLock.lock()
+        if let cached = cache[string] {
+            cacheLock.unlock()
+            return cached
+        }
+        cacheLock.unlock()
+
+        let date = plainFormatter.date(from: string)
+            ?? fractionalFormatter.date(from: string)
+            ?? bareFormatter.date(from: string)
+
+        cacheLock.lock()
+        if cache.count < cacheLimit { cache[string] = date }
+        cacheLock.unlock()
+        return date
     }
+
+    private static let cacheLock = NSLock()
+    private static let cacheLimit = 200_000
+    private nonisolated(unsafe) static var cache: [String: Date?] = [:]
+
+    private nonisolated(unsafe) static let plainFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime]
+        return formatter
+    }()
+
+    private nonisolated(unsafe) static let fractionalFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    private nonisolated(unsafe) static let bareFormatter: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
+        return formatter
+    }()
 
     static func utcHour(_ string: String) -> Int? {
         guard let date = parse(string) else { return nil }
