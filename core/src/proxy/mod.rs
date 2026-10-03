@@ -20,7 +20,6 @@ use crate::state::usage::UsageEvent;
 
 use crate::translate::chat::types::ChatRequest;
 use crate::translate::collect::Collector;
-use crate::translate::generate::build_generate_request;
 use self::route::Target;
 
 fn rename_history_reasoning_to_cerebras(body: &mut Value) {
@@ -224,20 +223,13 @@ impl Exchange {
 
     pub fn encode_generate(&mut self, mut req: ChatRequest) -> Result<Bytes, Response> {
         req.model = self.target.upstream_model.clone();
-        if matches!(self.target.provider, Provider::Antigravity) {
-            return match self
-                .app
-                .antigravity
-                .encode_request(req, &self.target.upstream_model)
-            {
-                Ok(body) => Ok(Bytes::from(body)),
-                Err(err) => Err(self.fail(ApiError::bad_request(err))),
-            };
-        }
-        let work_dir = self.app.work_dir.clone();
-        match build_generate_request(req, &work_dir, chrono::Utc::now()) {
-            Ok(body) => self.encode(&body),
-            Err(err) => Err(self.fail(ApiError::bad_request(format!("build cc request: {err}")))),
+        match self
+            .app
+            .antigravity
+            .encode_request(req, &self.target.upstream_model)
+        {
+            Ok(body) => Ok(Bytes::from(body)),
+            Err(err) => Err(self.fail(ApiError::bad_request(err))),
         }
     }
 

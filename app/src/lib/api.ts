@@ -4,7 +4,6 @@ export interface Health {
   status: string
   detail?: string
   version: string
-  api: string
 }
 
 export interface UsageRecord {
@@ -38,18 +37,11 @@ interface UsageTokenBreakdown {
 }
 
 
-export type AccountProvider =
-  | "commandcode"
-  | "workbuddy"
-  | "antigravity"
+export type AccountProvider = "workbuddy" | "antigravity"
 
 export interface Account {
   name: string
   provider: AccountProvider
-  has_key: boolean
-  email?: string
-  has_session_token: boolean
-  has_password: boolean
   workbuddy_uid?: string
   workbuddy_nickname?: string
   antigravity_email?: string
@@ -59,28 +51,6 @@ export interface Account {
 
 export interface AccountList {
   accounts: Account[]
-}
-
-export interface AccountLimits {
-  name: string
-  provider?: AccountProvider
-  plan?: string
-  monthly_credits: number
-  monthly_cap: number
-  five_hour_cap: number
-  five_hour_used: number
-  five_hour_reset_at: number
-  weekly_cap: number
-  weekly_used: number
-  weekly_reset_at: number
-  purchased_credits?: number
-  source: "live" | "stored" | "reauth_required"
-  fetched_at?: string
-  error?: string
-}
-
-export interface AllLimits {
-  accounts: AccountLimits[]
 }
 
 const API_BASE = "/api"
@@ -99,10 +69,6 @@ export async function getHealth(signal?: AbortSignal): Promise<Health> {
 
 export async function getAccounts(signal?: AbortSignal): Promise<AccountList> {
   return fetchJSON<AccountList>("/accounts", signal)
-}
-
-export async function getAllLimits(signal?: AbortSignal): Promise<AllLimits> {
-  return fetchJSON<AllLimits>("/limits/all", signal)
 }
 
 async function postJSON<T>(path: string, body: unknown): Promise<T> {
@@ -126,31 +92,9 @@ async function sendJSON<T>(path: string, method: string, body: unknown): Promise
   return (await res.json()) as T
 }
 
-export async function signInCommandCode(input: {
-  name: string
-  key?: string
-  email: string
-  password?: string
-  session_token?: string
-  captcha_response?: string
-}): Promise<{ ok: boolean; name: string }> {
-  return postJSON("/accounts/commandcode/sign-in", input)
-}
-
-export async function renewCommandCode(input: {
-  name: string
-  captcha_response: string
-}): Promise<{ ok: boolean; name: string }> {
-  return postJSON("/accounts/commandcode/renew", input)
-}
-
 export async function addAccount(input: {
   name: string
   provider?: AccountProvider
-  key?: string
-  session_token?: string
-  email?: string
-  password?: string
 }): Promise<{ ok: boolean; name: string }> {
   return postJSON("/accounts", input)
 }
@@ -158,10 +102,6 @@ export async function addAccount(input: {
 export async function editAccount(input: {
   name: string
   new_name?: string
-  key?: string
-  session_token?: string
-  email?: string
-  password?: string
   disabled?: boolean
 }): Promise<{ ok: boolean; name: string }> {
   return postJSON("/accounts/edit", input)
@@ -542,7 +482,7 @@ export interface ProviderModelDef {
 export interface ProviderEntry {
   name: string
   disabled: boolean
-  kind?: "openai" | "responses" | "workbuddy" | "commandcode" | "antigravity"
+  kind?: "openai" | "responses" | "workbuddy" | "antigravity"
   "base-url": string
   project?: string
   "api-key-entries": { "api-key": string; "proxy-url"?: string }[]
@@ -564,11 +504,7 @@ export function blankProviderEntry(
 }
 
 export function isManagedZone(p: ProviderEntry): boolean {
-  return (
-    p.kind === "workbuddy" ||
-    p.kind === "commandcode" ||
-    p.kind === "antigravity"
-  )
+  return p.kind === "workbuddy" || p.kind === "antigravity"
 }
 
 export async function getProviders(signal?: AbortSignal): Promise<ProviderEntry[]> {
@@ -616,7 +552,7 @@ export interface ZoneModel {
 }
 
 export async function fetchZoneModels(
-  kind: "workbuddy" | "commandcode" | "antigravity",
+  kind: "workbuddy" | "antigravity",
   signal?: AbortSignal
 ): Promise<ZoneModel[]> {
   const data = await fetchJSON<{ models: ZoneModel[] }>(

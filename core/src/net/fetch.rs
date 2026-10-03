@@ -1,6 +1,5 @@
 use axum::body::Bytes;
 use axum::http::{header, StatusCode};
-use serde::de::DeserializeOwned;
 
 use super::error::ApiError;
 
@@ -60,21 +59,6 @@ pub async fn post_json(
     let status = response.status().as_u16();
     let text = response.text().await.unwrap_or_default();
     Err(PostError::Status(status, text))
-}
-
-pub async fn send_json<T: DeserializeOwned>(
-    request: reqwest::RequestBuilder,
-    label: &str,
-) -> Result<T, String> {
-    let response = request
-        .send()
-        .await
-        .map_err(|err| format!("{label}: {err}"))?;
-    ok_or_status_err(response, label)
-        .await?
-        .json::<T>()
-        .await
-        .map_err(|err| format!("{label}: decode: {err}"))
 }
 
 pub async fn ok_or_status_err(

@@ -173,10 +173,6 @@ nonisolated struct AccountListResponse: Decodable {
 nonisolated struct AccountView: Decodable, Identifiable, Equatable {
     var name: String
     var provider: String?
-    var hasKey: Bool?
-    var email: String?
-    var hasSessionToken: Bool?
-    var hasPassword: Bool?
     var workbuddyUid: String?
     var workbuddyNickname: String?
     var antigravityEmail: String?
@@ -186,71 +182,11 @@ nonisolated struct AccountView: Decodable, Identifiable, Equatable {
     var id: String { name }
 
     enum CodingKeys: String, CodingKey {
-        case name, provider, email, disabled
-        case hasKey = "has_key"
-        case hasSessionToken = "has_session_token"
-        case hasPassword = "has_password"
+        case name, provider, disabled
         case workbuddyUid = "workbuddy_uid"
         case workbuddyNickname = "workbuddy_nickname"
         case antigravityEmail = "antigravity_email"
         case antigravityProjectId = "antigravity_project_id"
-    }
-}
-
-nonisolated struct LimitsResponse: Decodable {
-    var accounts: [LimitRow]
-}
-
-nonisolated struct LimitRow: Decodable, Identifiable, Equatable {
-    var name: String
-    var provider: String?
-    var plan: String?
-    var monthlyCredits: Double
-    var monthlyCap: Double
-    var fiveHourCap: Double
-    var fiveHourUsed: Double
-    var fiveHourResetAt: Double
-    var weeklyCap: Double
-    var weeklyUsed: Double
-    var weeklyResetAt: Double
-    var purchasedCredits: Double
-    var source: String
-    var fetchedAt: String?
-    var error: String?
-
-    var id: String { name }
-
-    enum CodingKeys: String, CodingKey {
-        case name, provider, plan, source, error
-        case monthlyCredits = "monthly_credits"
-        case monthlyCap = "monthly_cap"
-        case fiveHourCap = "five_hour_cap"
-        case fiveHourUsed = "five_hour_used"
-        case fiveHourResetAt = "five_hour_reset_at"
-        case weeklyCap = "weekly_cap"
-        case weeklyUsed = "weekly_used"
-        case weeklyResetAt = "weekly_reset_at"
-        case purchasedCredits = "purchased_credits"
-        case fetchedAt = "fetched_at"
-    }
-
-    init(from decoder: Decoder) throws {
-        let c = try decoder.container(keyedBy: CodingKeys.self)
-        name = try c.decode(String.self, forKey: .name)
-        provider = try c.decodeIfPresent(String.self, forKey: .provider)
-        plan = try c.decodeIfPresent(String.self, forKey: .plan)
-        monthlyCredits = try c.decodeIfPresent(Double.self, forKey: .monthlyCredits) ?? 0
-        monthlyCap = try c.decodeIfPresent(Double.self, forKey: .monthlyCap) ?? 0
-        fiveHourCap = try c.decodeIfPresent(Double.self, forKey: .fiveHourCap) ?? 0
-        fiveHourUsed = try c.decodeIfPresent(Double.self, forKey: .fiveHourUsed) ?? 0
-        fiveHourResetAt = try c.decodeIfPresent(Double.self, forKey: .fiveHourResetAt) ?? 0
-        weeklyCap = try c.decodeIfPresent(Double.self, forKey: .weeklyCap) ?? 0
-        weeklyUsed = try c.decodeIfPresent(Double.self, forKey: .weeklyUsed) ?? 0
-        weeklyResetAt = try c.decodeIfPresent(Double.self, forKey: .weeklyResetAt) ?? 0
-        purchasedCredits = try c.decodeIfPresent(Double.self, forKey: .purchasedCredits) ?? 0
-        source = try c.decodeIfPresent(String.self, forKey: .source) ?? "stored"
-        fetchedAt = try c.decodeIfPresent(String.self, forKey: .fetchedAt)
-        error = try c.decodeIfPresent(String.self, forKey: .error)
     }
 }
 
@@ -520,31 +456,6 @@ nonisolated struct EditAccountBody: Encodable {
     }
 }
 
-nonisolated struct CommandCodeSignInBody: Encodable {
-    var name: String
-    var key: String?
-    var email: String
-    var password: String?
-    var sessionToken: String?
-    var captchaResponse: String?
-
-    enum CodingKeys: String, CodingKey {
-        case name, key, email, password
-        case sessionToken = "session_token"
-        case captchaResponse = "captcha_response"
-    }
-}
-
-nonisolated struct CommandCodeRenewBody: Encodable {
-    var name: String
-    var captchaResponse: String
-
-    enum CodingKeys: String, CodingKey {
-        case name
-        case captchaResponse = "captcha_response"
-    }
-}
-
 nonisolated struct WorkbuddyAddBody: Encodable {
     var authJson: String
 
@@ -673,7 +584,7 @@ nonisolated struct ProviderEntry: Codable, Equatable, Identifiable {
 
     var id: String { name }
 
-    static let managedKinds = ["commandcode", "workbuddy", "antigravity"]
+    static let managedKinds = ["workbuddy", "antigravity"]
 
     var isManaged: Bool { kind.map(Self.managedKinds.contains) ?? false }
 

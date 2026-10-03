@@ -164,32 +164,28 @@ struct WorkbuddyKeyingTests {
     }
 
     @Test func uidWinsFirst() {
-        let account = AccountView(name: "whatever", provider: "workbuddy", hasKey: nil, email: nil,
-                                  hasSessionToken: nil, hasPassword: nil, workbuddyUid: "u1",
+        let account = AccountView(name: "whatever", provider: "workbuddy", workbuddyUid: "u1",
                                   workbuddyNickname: "beta", antigravityEmail: nil,
                                   antigravityProjectId: nil, disabled: nil)
         #expect(WorkbuddyKeying.status(in: accounts, for: account)?.uid == "u1")
     }
 
     @Test func nicknameFillsMissingUid() {
-        let account = AccountView(name: "alpha", provider: "workbuddy", hasKey: nil, email: nil,
-                                  hasSessionToken: nil, hasPassword: nil, workbuddyUid: nil,
+        let account = AccountView(name: "alpha", provider: "workbuddy", workbuddyUid: nil,
                                   workbuddyNickname: "beta", antigravityEmail: nil,
                                   antigravityProjectId: nil, disabled: nil)
         #expect(WorkbuddyKeying.status(in: accounts, for: account)?.uid == "wb-nick-only")
     }
 
     @Test func nameFallsBackToUid() {
-        let account = AccountView(name: "u1", provider: "workbuddy", hasKey: nil, email: nil,
-                                  hasSessionToken: nil, hasPassword: nil, workbuddyUid: nil,
+        let account = AccountView(name: "u1", provider: "workbuddy", workbuddyUid: nil,
                                   workbuddyNickname: nil, antigravityEmail: nil,
                                   antigravityProjectId: nil, disabled: nil)
         #expect(WorkbuddyKeying.status(in: accounts, for: account)?.nickname == "alpha")
     }
 
     @Test func unmatchedAccountReturnsNil() {
-        let account = AccountView(name: "ghost", provider: "workbuddy", hasKey: nil, email: nil,
-                                  hasSessionToken: nil, hasPassword: nil, workbuddyUid: "u9",
+        let account = AccountView(name: "ghost", provider: "workbuddy", workbuddyUid: "u9",
                                   workbuddyNickname: "omega", antigravityEmail: nil,
                                   antigravityProjectId: nil, disabled: nil)
         #expect(WorkbuddyKeying.status(in: accounts, for: account) == nil)

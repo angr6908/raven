@@ -1,38 +1,27 @@
 use std::sync::Arc;
 use std::time::Duration;
 
-use crate::config::{Config, VERSION};
+use crate::config::Config;
 use crate::providers::antigravity::Antigravity;
-use crate::providers::commandcode::{self, limits::AccountLimits, models::ModelCache};
 use crate::providers::workbuddy::Workbuddy;
 use crate::state::accounts::{AccountsManager, Channel};
 use crate::state::catalog::CatalogCache;
 use crate::state::providers::Store;
 use crate::state::usage::UsageRecorder;
-use crate::translate::ids::project_slug_from_path;
 
 pub struct App {
     pub accounts: Arc<AccountsManager>,
     pub providers: Arc<Store>,
     pub usage: Arc<UsageRecorder>,
-    pub limits: Arc<AccountLimits>,
-    pub models: Arc<ModelCache>,
     pub catalog: Arc<CatalogCache>,
     pub workbuddy: Arc<Workbuddy>,
     pub antigravity: Arc<Antigravity>,
-    pub commandcode_auth: Arc<crate::providers::commandcode::auth::CommandCodeAuth>,
 
     pub client: reqwest::Client,
-    pub commandcode: commandcode::Settings,
-    pub work_dir: String,
-    pub project_slug: String,
-    pub user_agent: String,
 }
 
 impl App {
     pub fn build(config: &Config) -> Result<Self, String> {
-        let commandcode = commandcode::Settings::resolve(&config.api_base, &config.cli_version);
-        let user_agent = format!("raven/{VERSION}");
         let client = reqwest::Client::builder()
             .connect_timeout(Duration::from_secs(30))
             .pool_idle_timeout(Duration::from_secs(90))
@@ -43,36 +32,15 @@ impl App {
         let accounts = Arc::new(AccountsManager::new(&config.data_dir)?);
         let workbuddy = Workbuddy::new(&config.data_dir, Arc::clone(&accounts), client.clone());
         let antigravity = Antigravity::new(Arc::clone(&accounts));
-        let commandcode_auth = Arc::new(crate::providers::commandcode::auth::CommandCodeAuth::new(
-            client.clone(),
-            commandcode.api_base.clone(),
-            user_agent.clone(),
-        ));
 
         Ok(Self {
-            limits: Arc::new(AccountLimits::new(
-                client.clone(),
-                user_agent.clone(),
-                commandcode.clone(),
-                Arc::clone(&accounts),
-            )),
-            models: Arc::new(ModelCache::new(
-                client.clone(),
-                &commandcode,
-                user_agent.clone(),
-            )),
             usage: Arc::new(UsageRecorder::new(&config.data_dir)?),
             providers: Arc::new(Store::new(&config.data_dir)?),
             catalog: Arc::new(CatalogCache::new()),
             accounts,
             workbuddy,
             antigravity,
-            commandcode_auth,
             client,
-            commandcode,
-            work_dir: config.work_dir().to_string_lossy().into_owned(),
-            project_slug: project_slug_from_path(&config.work_dir().to_string_lossy()),
-            user_agent,
         })
     }
 

@@ -36,10 +36,9 @@ async fn run() -> Result<(), String> {
         .await
         .map_err(|err| format!("listen on {}: {err}", config.address))?;
     eprintln!(
-        "raven {} listening on http://{}/v1 (upstream {})",
+        "raven {} listening on http://{}/v1",
         config::VERSION,
         config.address,
-        app.commandcode.api_base
     );
 
     let router = routes::build(Arc::clone(&app), &config.static_dir);

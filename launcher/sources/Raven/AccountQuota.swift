@@ -1,17 +1,5 @@
 import Foundation
 
-nonisolated enum UsagePeriod: String, CaseIterable {
-    case fiveHour, weekly, monthly
-
-    var header: String {
-        switch self {
-        case .fiveHour: "5h"
-        case .weekly: "Weekly"
-        case .monthly: "Monthly"
-        }
-    }
-}
-
 nonisolated enum QuotaCellContent: Equatable {
     case dash
     case badge(String, String?)
@@ -32,11 +20,6 @@ nonisolated enum AccountQuota {
         return String(format: "%.0f%%", value)
     }
 
-    static func capFraction(used: Double?, cap: Double?) -> Double? {
-        guard let used, let cap, cap > 0 else { return nil }
-        return max(0, min(1, (cap - used) / cap))
-    }
-
     static func quotaResetShort(fromEpochMs ms: Double?) -> String? {
         guard let ms, ms.isFinite else { return nil }
         let raw = (ms / 1000 - Date().timeIntervalSince1970) / 60
@@ -52,38 +35,6 @@ nonisolated enum AccountQuota {
     static func quotaResetShort(iso: String?) -> String? {
         guard let iso, let date = PanelFormats.parseISO(iso) else { return nil }
         return quotaResetShort(fromEpochMs: date.timeIntervalSince1970 * 1000)
-    }
-
-    static func commandCodeCell(_ limits: LimitRow, period: UsagePeriod, first: Bool) -> QuotaCellContent {
-        if limits.source == "reauth_required" {
-            return first ? .badge("sign in again", nonEmpty(limits.error) ?? "Live quota data is unavailable") : .dash
-        }
-        if limits.source != "live" {
-            return first ? .badge("unavailable", nonEmpty(limits.error) ?? "Live quota data is unavailable") : .dash
-        }
-        switch period {
-        case .fiveHour:
-            guard let fraction = capFraction(used: limits.fiveHourUsed, cap: positive(limits.fiveHourCap)) else { return .dash }
-            return .value(percent: quotaPercent(fraction),
-                          reset: quotaResetShort(fromEpochMs: positive(limits.fiveHourResetAt)),
-                          title: "5-hour limit remaining",
-                          fraction: fraction)
-        case .weekly:
-            guard let fraction = capFraction(used: limits.weeklyUsed, cap: positive(limits.weeklyCap)) else { return .dash }
-            return .value(percent: quotaPercent(fraction),
-                          reset: quotaResetShort(fromEpochMs: positive(limits.weeklyResetAt)),
-                          title: "Weekly limit remaining",
-                          fraction: fraction)
-        case .monthly:
-            let cap = limits.monthlyCap
-            if cap <= 0 { return .dash }
-            let remaining = min(limits.monthlyCredits, cap)
-            var title = "\(numberText(remaining)) credits remaining of \(numberText(cap))"
-            if limits.purchasedCredits > 0 {
-                title += " · +\(numberText(limits.purchasedCredits)) purchased"
-            }
-            return .value(percent: quotaPercent(remaining / cap), reset: nil, title: title, fraction: remaining / cap)
-        }
     }
 
     static let windowOrder = ["5h", "daily", "7d", "monthly"]
@@ -175,10 +126,6 @@ nonisolated enum AccountQuota {
     private static func nonEmpty(_ text: String?) -> String? {
         guard let text, !text.isEmpty else { return nil }
         return text
-    }
-
-    private static func positive(_ value: Double) -> Double? {
-        value > 0 ? value : nil
     }
 
     private static func matches(_ text: String, _ pattern: String) -> Bool {

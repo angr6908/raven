@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::app::App;
-use crate::providers::{antigravity, commandcode, workbuddy};
+use crate::providers::{antigravity, workbuddy};
 use crate::{assets, proxy, state};
 
 pub fn build(app: Arc<App>, static_dir: &Path) -> Router {
@@ -66,15 +66,6 @@ fn management() -> Router<Arc<App>> {
         .route(
             "/prices",
             get(state::usage::handle_prices).post(state::usage::handle_prices_save),
-        )
-        .route("/limits/all", get(state::accounts::handle_limits))
-        .route(
-            "/accounts/commandcode/sign-in",
-            post(commandcode::panel::handle_sign_in),
-        )
-        .route(
-            "/accounts/commandcode/renew",
-            post(commandcode::panel::handle_renew),
         )
         .route(
             "/accounts",

@@ -12,17 +12,6 @@ import {
   fetchZoneModels,
 } from "@/lib/api"
 
-const isCommandCode = (p: ProviderEntry) => p.kind === "commandcode"
-
-function findZones(list: ProviderEntry[]) {
-  const commandCodeIndex = list.findIndex(isCommandCode)
-  return {
-    commandcode: commandCodeIndex >= 0 ? list[commandCodeIndex] : undefined,
-    workbuddy: list.find((p) => p.kind === "workbuddy"),
-    antigravity: list.find((p) => p.kind === "antigravity"),
-  }
-}
-
 export type ZoneEditor = (
   match: (p: ProviderEntry) => boolean,
   blank: () => ProviderEntry,
@@ -36,7 +25,7 @@ export function ManagedZoneCards({
   providers: ProviderEntry[]
   editZone: ZoneEditor
 }) {
-  const { commandcode, antigravity } = findZones(providers)
+  const antigravity = providers.find((p) => p.kind === "antigravity")
   const antigravityLevels = useRef(new Map<string, string[]>())
 
   const fetchAntigravity = useCallback(async () => {
@@ -53,21 +42,6 @@ export function ManagedZoneCards({
 
   return (
     <div className="grid gap-3">
-      <ZoneCard
-        title="Command Code"
-        match={isCommandCode}
-        blank={() => blankProviderEntry("commandcode", "CommandCode")}
-        entry={commandcode}
-        aliasOwner={commandcode?.name || "CommandCode"}
-        fetchUpstream={async () =>
-          (await fetchZoneModels("commandcode")).map((m) => ({
-            id: m.id,
-            label: m.display_name || m.id,
-          }))
-        }
-        emptyHint="No models pinned — fetch the catalog and pick, or add a row by hand."
-        editZone={editZone}
-      />
       <ZoneCard
         title="WorkBuddy"
         match={(p) => p.kind === "workbuddy"}

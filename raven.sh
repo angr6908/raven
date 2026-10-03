@@ -167,7 +167,7 @@ parse_models() {
     client = ARGV[0]
     groups = {
       "openai" => "Codex / OpenAI",
-      "CommandCode" => "Command Code",
+      "workbuddy" => "WorkBuddy",
       "antigravity" => "Antigravity",
     }
     skip = /\A(gpt-image-|codex-auto-review)/
@@ -889,9 +889,8 @@ elif [ "$CLIENT" = grok ]; then
 else
   # Codex speaks the Responses API natively. Every model goes through raven,
   # which translates the Responses API to the appropriate upstream protocol
-  # (Command Code /alpha/generate for Command Code models, Antigravity
-  # v1internal:streamGenerateContent for Antigravity models, and Chat
-  # Completions / Responses for openai-compatibility providers).
+  # (Antigravity v1internal:streamGenerateContent for Antigravity models, and
+  # Chat Completions / Responses for openai-compatibility providers).
   export RAVEN_API_KEY="$PROXY_KEY"
   set -- \
     -c model_provider=raven \

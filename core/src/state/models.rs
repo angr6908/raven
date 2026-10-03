@@ -7,7 +7,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 
 use crate::app::App;
-use crate::providers::{antigravity, commandcode};
+use crate::providers::antigravity;
 use crate::state::accounts::Channel;
 
 use super::{bad_request, failed};
@@ -299,7 +299,6 @@ pub async fn handle_provider_kind_models(
 ) -> Response {
     match Channel::parse(&kind) {
         Some(Channel::Workbuddy) => handle_provider_workbuddy_models(State(state)).await,
-        Some(Channel::Commandcode) => commandcode::models::handle_catalog(State(state)).await,
         Some(Channel::Antigravity) => antigravity::panel::handle_models(State(state)).await,
         None => StatusCode::NOT_FOUND.into_response(),
     }

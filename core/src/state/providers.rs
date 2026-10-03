@@ -119,22 +119,6 @@ impl Store {
         let entry = self.find(base)?;
         effort_level(entry.model.pointer("/thinking/levels"), effort).then_some((base, effort))
     }
-
-    pub fn commandcode_model(&self, model: &str) -> Option<String> {
-        if model.is_empty() {
-            return None;
-        }
-        let providers = self.providers.lock().ok()?;
-        providers.iter().find_map(|provider| {
-            if provider.get("kind").and_then(Value::as_str) != Some("commandcode") {
-                return None;
-            }
-            matching_model(provider, model)?
-                .get("name")
-                .and_then(Value::as_str)
-                .map(str::to_string)
-        })
-    }
 }
 
 fn matching_model(provider: &Value, model: &str) -> Option<Value> {
@@ -187,51 +171,18 @@ mod tests {
     }
 
     fn fixture() -> Store {
-        store_with(vec![
-            json!({
-                "name": "CommandCode",
-                "kind": "commandcode",
-                "base-url": "",
-                "models": [{"name": "deepseek/deepseek-v4-flash", "alias": "deepseek-v4-flash@CommandCode"}],
-            }),
-            json!({
-                "name": "BAI",
-                "kind": "openai",
-                "base-url": "https://api.bai.example/v1",
-                "api-key-entries": [{"api-key": "k"}],
-                "models": [{"name": "glm-4.6", "alias": "glm-4.6@BAI"}],
-            }),
-        ])
-    }
-
-    #[test]
-    fn commandcode_model_resolves_zone_aliases() {
-        let store = fixture();
-        assert_eq!(
-            store
-                .commandcode_model("deepseek-v4-flash@CommandCode")
-                .as_deref(),
-            Some("deepseek/deepseek-v4-flash")
-        );
-        assert_eq!(
-            store
-                .commandcode_model("deepseek/deepseek-v4-flash")
-                .as_deref(),
-            Some("deepseek/deepseek-v4-flash")
-        );
-        assert_eq!(store.commandcode_model("gpt-4o"), None);
-        assert_eq!(store.commandcode_model(""), None);
+        store_with(vec![json!({
+            "name": "BAI",
+            "kind": "openai",
+            "base-url": "https://api.bai.example/v1",
+            "api-key-entries": [{"api-key": "k"}],
+            "models": [{"name": "glm-4.6", "alias": "glm-4.6@BAI"}],
+        })])
     }
 
     #[test]
     fn find_matches_on_alias_or_upstream_name() {
         let store = fixture();
-        let zone = store
-            .find("deepseek-v4-flash@CommandCode")
-            .expect("zone alias matches the commandcode entry");
-        assert_eq!(zone.provider_name(), "CommandCode");
-        assert_eq!(zone.upstream_model("fallback"), "deepseek/deepseek-v4-flash");
-
         assert_eq!(store.find("glm-4.6@BAI").expect("BAI alias").provider_name(), "BAI");
         assert!(store.find("claude-sonnet-4").is_none());
         assert!(store.find("").is_none());

@@ -2,11 +2,8 @@ import { useCallback, useEffect, useState } from "react"
 import {
   Bot,
   FolderSearch,
-  KeyRound,
-  Pencil,
   Plus,
   RefreshCw,
-  Save,
   Sparkles,
   Trash2,
   User,
@@ -35,13 +32,11 @@ import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
 import {
   type Account,
-  type AccountLimits,
   type AccountProvider,
   type AntigravityQuotaAccount,
   type AntigravityStatus,
   type WorkbuddyStatus,
   addWorkbuddyAccount,
-  signInCommandCode,
   completeAntigravityOAuth,
   editAccount,
   getAntigravityOAuthStatus,
@@ -57,32 +52,12 @@ import {
   startWorkbuddyOAuth,
 } from "@/lib/api"
 import { Dash } from "@/components/dash"
-import { CommandCodeTurnstile } from "@/components/commandcode-turnstile"
 import {
-  type UsagePeriod,
   AntigravityQuotaCell,
-  CommandCodeUsageCell,
   antigravityQuotaColumns,
 } from "@/components/account-limits"
 import { ErrorBanner } from "@/components/error-banner"
 import { errorMessage } from "@/lib/utils"
-
-interface EditDraft {
-  target: string
-  key: string
-  session_token: string
-  email: string
-  password: string
-}
-
-function changedFields(draft: EditDraft): Record<string, string> {
-  const fields = ["key", "session_token", "password"] as const
-  return Object.fromEntries(
-    fields
-      .map((field) => [field, draft[field].trim()])
-      .filter(([, value]) => value !== "")
-  )
-}
 
 function Section({
   title,
@@ -162,26 +137,13 @@ function writeCachedQuota(quota: AntigravityQuotaAccount[]): void {
   }
 }
 
-const PERIOD_COLUMNS: { id: UsagePeriod; header: string }[] = [
-  { id: "fiveHour", header: "5h" },
-  { id: "weekly", header: "Weekly" },
-  { id: "monthly", header: "Monthly" },
-]
-
 export function Accounts({
   accounts,
-  limits,
   onChanged,
 }: {
   accounts: Account[]
-  limits?: AccountLimits[]
   onChanged: () => void
 }) {
-  const [key, setKey] = useState("")
-  const [sessionToken, setSessionToken] = useState("")
-  const [commandEmail, setCommandEmail] = useState("")
-  const [commandPassword, setCommandPassword] = useState("")
-  const [commandCaptcha, setCommandCaptcha] = useState("")
   const [wbAuth, setWbAuth] = useState("")
   const [wbNote, setWbNote] = useState<string>()
   const [wbOAuth, setWbOAuth] = useState<{
@@ -190,7 +152,6 @@ export function Accounts({
   } | null>(null)
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string>()
-  const [edit, setEdit] = useState<EditDraft | null>(null)
   const [addFor, setAddFor] = useState<AccountProvider | null>(null)
   const [wbStatus, setWbStatus] = useState<WorkbuddyStatus>()
   const [agCallback, setAgCallback] = useState("")
@@ -295,11 +256,6 @@ export function Accounts({
   }
 
   function clearAddFields() {
-    setKey("")
-    setSessionToken("")
-    setCommandEmail("")
-    setCommandPassword("")
-    setCommandCaptcha("")
     setWbAuth("")
     setWbNote(undefined)
     setAgCallback("")
@@ -308,50 +264,6 @@ export function Accounts({
   function cancelAdd() {
     setAddFor(null)
     clearAddFields()
-  }
-
-  function startEdit(a: Account) {
-    setEdit({
-      target: a.name,
-      key: "",
-      session_token: "",
-      email: a.email ?? "",
-      password: "",
-    })
-  }
-
-  const setDraft = (field: keyof EditDraft, value: string) =>
-    setEdit((prev) => (prev ? { ...prev, [field]: value } : prev))
-
-  function handleEdit(e: React.FormEvent) {
-    e.preventDefault()
-    if (!edit) return
-    if (
-      editable?.provider === "commandcode" &&
-      (edit.password ||
-        edit.session_token ||
-        (edit.email.trim() !== (editable.email ?? "") && commandCaptcha))
-    ) {
-      void run(async () => {
-        await signInCommandCode({
-          name: edit.target,
-          email: edit.email.trim(),
-          password: edit.password || undefined,
-          session_token: edit.session_token || undefined,
-          captcha_response: commandCaptcha || undefined,
-        })
-        setEdit(null)
-        setCommandCaptcha("")
-      }, "Failed to update Command Code credentials")
-      return
-    }
-    void run(async () => {
-      await editAccount({
-        name: edit.target,
-        ...changedFields(edit),
-      })
-      setEdit(null)
-    }, "Failed to edit account")
   }
 
   function handleAdd(e: React.FormEvent) {
@@ -375,28 +287,7 @@ export function Accounts({
         clearAddFields()
         loadWbStatus()
       }, "Failed to add WorkBuddy account")
-      return
     }
-    if (
-      !commandEmail.trim() ||
-      (!sessionToken.trim() && (!commandPassword || !commandCaptcha))
-    ) {
-      setError("Complete the verification and enter email/password for Command Code sign-in")
-      return
-    }
-    void run(async () => {
-      await signInCommandCode({
-        name: commandEmail.trim(),
-        key: key.trim() || undefined,
-        email: commandEmail.trim(),
-        password: commandPassword || undefined,
-        session_token: sessionToken.trim() || undefined,
-        captcha_response: commandCaptcha || undefined,
-      })
-      setAddFor(null)
-      clearAddFields()
-      setCommandCaptcha("")
-    }, "Failed to add account")
   }
 
   async function handleReadLocal() {
@@ -477,11 +368,6 @@ export function Accounts({
     }
   }
 
-  const editable = edit
-    ? accounts.find((a) => a.name === edit.target)
-    : undefined
-
-  const commandAccounts = accounts.filter((a) => a.provider === "commandcode")
   const workbuddyAccounts = accounts.filter((a) => a.provider === "workbuddy")
   const antigravityAccounts = accounts.filter(
     (a) => a.provider === "antigravity"
@@ -494,8 +380,6 @@ export function Accounts({
   const wbStatusByUid = new Map(
     (wbStatus?.accounts ?? []).map((s) => [s.uid, s])
   )
-
-  const limitsByName = new Map((limits ?? []).map((l) => [l.name, l]))
 
   const addForm = addFor ? (
     <FormPanel>
@@ -590,168 +474,10 @@ export function Accounts({
               </Button>
             </div>
           </>
-        ) : (
-          <>
-            <div className="grid gap-1.5">
-              <Label htmlFor="acct-key">API key</Label>
-              <Input
-                id="acct-key"
-                value={key}
-                onChange={(e) => setKey(e.target.value)}
-                placeholder="user_..."
-                type="password"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="acct-command-email">Command Code email</Label>
-              <Input
-                id="acct-command-email"
-                value={commandEmail}
-                onChange={(e) => setCommandEmail(e.target.value)}
-                type="email"
-                autoComplete="username"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="acct-command-password">Command Code password</Label>
-              <Input
-                id="acct-command-password"
-                value={commandPassword}
-                onChange={(e) => setCommandPassword(e.target.value)}
-                type="password"
-                autoComplete="current-password"
-              />
-            </div>
-            {!sessionToken.trim() ? (
-              <div className="grid gap-2">
-                <p className="text-xs text-muted-foreground">
-                  Complete Command Code verification before signing in. Password is stored in accounts.json for session renewal.
-                </p>
-                <CommandCodeTurnstile onToken={setCommandCaptcha} />
-              </div>
-            ) : null}
-            <details>
-              <summary className="cursor-pointer text-xs text-muted-foreground">Use a session token instead</summary>
-              <div className="mt-2 grid gap-1.5">
-                <Label htmlFor="acct-token">Session token</Label>
-                <Input
-                  id="acct-token"
-                  value={sessionToken}
-                  onChange={(e) => setSessionToken(e.target.value)}
-                  type="password"
-                  className="font-mono text-xs"
-                />
-              </div>
-            </details>
-            <div className="flex items-center gap-2">
-              <Button
-                type="submit"
-                isDisabled={
-                  busy ||
-                  !commandEmail.trim() ||
-                  (!sessionToken.trim() && !key.trim()) ||
-                  (!sessionToken.trim() && (!commandPassword || !commandCaptcha))
-                }
-              >
-                <Plus className="size-4" />
-                Add account
-              </Button>
-              <Button type="button" variant="ghost" onPress={cancelAdd}>
-                <X className="size-3.5" />
-                Cancel
-              </Button>
-            </div>
-          </>
-        )}
+        ) : null}
       </form>
     </FormPanel>
   ) : null
-
-  const editForm =
-    editable && edit ? (
-      <FormPanel>
-        <form onSubmit={handleEdit} className="grid gap-4">
-          <div className="grid gap-4 md:grid-cols-2">
-            <div className="grid gap-1.5">
-              <Label htmlFor="edit-key">API key</Label>
-              <Input
-                id="edit-key"
-                value={edit.key}
-                onChange={(e) => setDraft("key", e.target.value)}
-                className="font-mono text-xs"
-                type="password"
-                placeholder={editable.has_key ? "Saved API key (leave blank to keep)" : "user_..."}
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="edit-email">Command Code email</Label>
-              <Input
-                id="edit-email"
-                value={edit.email}
-                onChange={(e) => setDraft("email", e.target.value)}
-                type="email"
-                autoComplete="username"
-              />
-            </div>
-            <div className="grid gap-1.5">
-              <Label htmlFor="edit-password">Command Code password</Label>
-              <Input
-                id="edit-password"
-                value={edit.password}
-                onChange={(e) => setDraft("password", e.target.value)}
-                type="password"
-                autoComplete="current-password"
-                placeholder={editable.has_password ? "Saved password (leave blank to keep)" : ""}
-              />
-              {edit.password || edit.email.trim() !== (editable.email ?? "") ? (
-                <div className="grid gap-2">
-                  <span className="text-xs text-muted-foreground">
-                    Complete Command Code verification before signing in or updating the email.
-                  </span>
-                  <CommandCodeTurnstile onToken={setCommandCaptcha} />
-                </div>
-              ) : null}
-            </div>
-            {editable.provider !== "commandcode" ? (
-              <div className="grid gap-1.5">
-                <Label htmlFor="edit-token">Session token</Label>
-                <Input
-                  id="edit-token"
-                  value={edit.session_token}
-                  onChange={(e) => setDraft("session_token", e.target.value)}
-                  className="font-mono text-xs"
-                  type="password"
-                />
-              </div>
-            ) : null}
-          </div>
-          <div className="flex items-center gap-2">
-            <Button
-              type="submit"
-              size="sm"
-              isDisabled={
-                busy ||
-                (editable?.provider === "commandcode" &&
-                  edit.email.trim() !== (editable.email ?? "") &&
-                  !commandCaptcha)
-              }
-            >
-              <Save className="size-3.5" />
-              Save
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              onPress={() => setEdit(null)}
-            >
-              <X className="size-3.5" />
-              Cancel
-            </Button>
-          </div>
-        </form>
-      </FormPanel>
-    ) : null
 
   return (
     <div className="flex flex-col gap-6">
@@ -795,106 +521,6 @@ export function Accounts({
       ) : null}
 
       {}
-      <Section
-        title="Command Code"
-        count={commandAccounts.length}
-        actions={
-          <Button
-            variant="outline"
-            size="sm"
-            onPress={() => openAdd("commandcode")}
-            isDisabled={busy}
-          >
-            <Plus className="size-3.5" />
-            {addFor === "commandcode" ? "Close" : "Add"}
-          </Button>
-        }
-      >
-        {addFor === "commandcode" ? addForm : null}
-        {editable?.provider === "commandcode" ? editForm : null}
-        {commandAccounts.length === 0 ? (
-          <EmptyState
-            icon={KeyRound}
-            title="No Command Code accounts"
-            hint="Add an account with its API key — every enabled account joins the shared pool, drained one at a time."
-            action={
-              <Button
-                variant="outline"
-                size="sm"
-                onPress={() => openAdd("commandcode")}
-              >
-                <Plus className="size-3.5" />
-                Add Command Code account
-              </Button>
-            }
-          />
-        ) : (
-          <Table aria-label="Command Code accounts">
-            <TableHeader>
-              <TableHead isRowHeader>Account</TableHead>
-              {PERIOD_COLUMNS.map((p) => (
-                <TableHead key={p.id}>{p.header}</TableHead>
-              ))}
-              <TableHead>Enabled</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableHeader>
-            <TableBody>
-              {commandAccounts.map((a) => (
-                <TableRow key={a.name}>
-                  <TableCell className="font-medium">
-                    <span className="flex items-center gap-2">
-                      <User className="size-3.5 text-muted-foreground" />
-                      {a.name}
-                    </span>
-                  </TableCell>
-                  {PERIOD_COLUMNS.map((p, index) => (
-                    <TableCell key={p.id} className="font-mono text-xs">
-                      {limitsByName.has(a.name) ? (
-                        <CommandCodeUsageCell
-                          limits={limitsByName.get(a.name)!}
-                          period={p.id}
-                          first={index === 0}
-                        />
-                      ) : (
-                        <Dash />
-                      )}
-                    </TableCell>
-                  ))}
-                  <TableCell>
-                    <Switch
-                      aria-label={`Command Code account ${a.name} enabled`}
-                      isSelected={!a.disabled}
-                      onChange={(on) => setAccountEnabled(a, on)}
-                      isDisabled={busy}
-                    />
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Edit ${a.name}`}
-                      onPress={() => startEdit(a)}
-                      isDisabled={busy}
-                    >
-                      <Pencil className="size-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      aria-label={`Remove ${a.name}`}
-                      onPress={() => handleRemove(a.name)}
-                      isDisabled={busy}
-                    >
-                      <Trash2 className="size-4 text-destructive" />
-                    </Button>
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        )}
-      </Section>
-
       <Section
         title="WorkBuddy"
         count={workbuddyAccounts.length}

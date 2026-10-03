@@ -1,26 +1,21 @@
 use std::env;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 pub const DEFAULT_PORT: u16 = 3458;
 
 pub struct Config {
     pub address: String,
-    pub api_base: String,
-    pub work_dir: PathBuf,
     pub data_dir: PathBuf,
     pub static_dir: PathBuf,
-    pub cli_version: String,
 }
 
 struct Flags {
     host: String,
     port: u16,
-    api_base: String,
     work_dir: String,
     data_dir: String,
     static_dir: String,
-    cli_version: String,
     version: bool,
 }
 
@@ -46,16 +41,9 @@ impl Config {
 
         Ok(Some(Self {
             address: format!("{}:{}", flags.host, flags.port),
-            api_base: flags.api_base.trim_end_matches('/').to_string(),
-            work_dir,
             data_dir,
             static_dir,
-            cli_version: flags.cli_version,
         }))
-    }
-
-    pub fn work_dir(&self) -> &Path {
-        &self.work_dir
     }
 }
 
@@ -63,11 +51,9 @@ fn parse(args: Vec<String>) -> Result<Flags, String> {
     let mut flags = Flags {
         host: "127.0.0.1".to_string(),
         port: DEFAULT_PORT,
-        api_base: String::new(),
         work_dir: String::new(),
         data_dir: String::new(),
         static_dir: String::new(),
-        cli_version: String::new(),
         version: false,
     };
 
@@ -113,11 +99,9 @@ fn apply(flags: &mut Flags, name: &str, value: &str) -> Result<(), String> {
                 .parse()
                 .map_err(|_| format!("invalid port: {value}"))?
         }
-        "api-base" => flags.api_base = value.to_string(),
         "working-dir" => flags.work_dir = value.to_string(),
         "data-dir" => flags.data_dir = value.to_string(),
         "static-dir" => flags.static_dir = value.to_string(),
-        "cc-version" => flags.cli_version = value.to_string(),
         other => return Err(format!("unknown flag: --{other}")),
     }
     Ok(())

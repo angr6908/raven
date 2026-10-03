@@ -8,12 +8,10 @@ import { UsageView } from "@/components/usage"
 import { ProvidersView } from "@/components/providers"
 import { PricingView } from "@/components/pricing"
 import {
-  type AccountLimits,
   type AccountList,
   type Health,
   type ProviderEntry,
   getAccounts,
-  getAllLimits,
   getHealth,
   getProviders,
 } from "@/lib/api"
@@ -32,7 +30,6 @@ export default function App() {
   const [accounts, setAccounts] = useState<AccountList>({
     accounts: [],
   })
-  const [limits, setLimits] = useState<AccountLimits[]>()
   const [providers, setProviders] = useState<ProviderEntry[]>([])
   const usage = useUsageLive()
 
@@ -60,10 +57,7 @@ export default function App() {
         .catch(() => setHealth(undefined)),
     ]
     if (page === "accounts") {
-      requests.push(
-        getAccounts().then(setAccounts),
-        getAllLimits().then((result) => setLimits(result.accounts))
-      )
+      requests.push(getAccounts().then(setAccounts))
     }
     await Promise.allSettled(requests)
   }, [page])
@@ -102,7 +96,6 @@ export default function App() {
       ) : page === "accounts" ? (
         <Accounts
           accounts={accounts.accounts}
-          limits={limits}
           onChanged={reload}
         />
       ) : page === "models" ? (

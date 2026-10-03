@@ -10,13 +10,11 @@ final class AccountsStore {
     static var cacheDirectoryOverride: URL?
 
     private(set) var accounts: [AccountView] = []
-    private(set) var limits: [LimitRow] = []
     private(set) var wbStatus: WorkbuddyStatusResponse?
     private(set) var agStatus: AntigravityStatusResponse?
     private(set) var agQuota: [QuotaAccount] = []
     private(set) var error: String?
     private(set) var fetchError: String?
-    private(set) var limitsError: String?
     private(set) var busy = false
     private(set) var quotaWasStale = false
 
@@ -27,7 +25,6 @@ final class AccountsStore {
     var wbOAuth: OAuthSession?
     var agOAuth: OAuthSession?
 
-    var commandAccounts: [AccountView] { accounts.filter { $0.provider == "commandcode" } }
     var workbuddyAccounts: [AccountView] { accounts.filter { $0.provider == "workbuddy" } }
     var antigravityAccounts: [AccountView] { accounts.filter { $0.provider == "antigravity" } }
 
@@ -78,13 +75,6 @@ final class AccountsStore {
         } catch {
             fetchError = (error as? PanelError)?.noticeText ?? error.localizedDescription
         }
-        do {
-            let result: LimitsResponse = try await PanelClient.shared.get("/api/limits/all", timeout: 45)
-            limits = result.accounts
-            limitsError = nil
-        } catch {
-            limitsError = (error as? PanelError)?.noticeText ?? error.localizedDescription
-        }
         if accounts.contains(where: { $0.provider == "workbuddy" }) {
             if let status: WorkbuddyStatusResponse = try? await PanelClient.shared.get("/api/workbuddy/status") {
                 wbStatus = status
@@ -101,10 +91,6 @@ final class AccountsStore {
                 }
             }
         }
-    }
-
-    func limitsByName(_ name: String) -> LimitRow? {
-        limits.first { $0.name == name }
     }
 
     func wbStatusByUid(_ uid: String?) -> WorkbuddyAccountStatus? {
@@ -141,28 +127,12 @@ final class AccountsStore {
         }
     }
 
-    func signInCommandCode(name: String, key: String?, email: String,
-                           password: String?, sessionToken: String?, captcha: String?) async -> Bool {
-        await run({
-            try await PanelClient.shared.postVoid("/api/accounts/commandcode/sign-in",
-                                                  json: CommandCodeSignInBody(name: name,
-                                                                              key: blankToNil(key),
-                                                                              email: email,
-                                                                              password: verbatimToNil(password),
-                                                                              sessionToken: blankToNil(sessionToken),
-                                                                              captchaResponse: blankToNil(captcha)))
-        }, fallback: "Failed to add account")
-    }
-
     func editAccount(name: String, key: String?, sessionToken: String?,
                      email: String?, password: String?, disabled: Bool?) async -> Bool {
         await run({
             try await PanelClient.shared.postVoid("/api/accounts/edit",
                                                   json: EditAccountBody(name: name,
-                                                                        key: blankToNil(key),
                                                                         sessionToken: blankToNil(sessionToken),
-                                                                        email: blankToNil(email),
-                                                                        password: verbatimToNil(password),
                                                                         disabled: disabled))
         }, fallback: "Failed to edit account")
     }
@@ -302,11 +272,6 @@ final class AccountsStore {
     private func blankToNil(_ text: String?) -> String? {
         guard let text, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
         return text.trimmingCharacters(in: .whitespaces)
-    }
-
-    private func verbatimToNil(_ text: String?) -> String? {
-        guard let text, !text.isEmpty else { return nil }
-        return text
     }
 }
 

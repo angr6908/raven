@@ -85,11 +85,6 @@ struct ProvidersPanelView: View {
     }
 
     static let zoneSpecs: [ZoneSpec] = [
-        ZoneSpec(key: "commandcode", title: "Command Code",
-                 match: { $0.kind == "commandcode" },
-                 blank: { PanelLogic.blankProviderEntry(kind: "commandcode", name: "CommandCode") },
-                 aliasOwner: "CommandCode", followEntryName: true, fetchKind: "commandcode", presets: false,
-                 emptyHint: "No models pinned — fetch the catalog and pick, or add a row by hand."),
         ZoneSpec(key: "workbuddy", title: "WorkBuddy",
                  match: { $0.kind == "workbuddy" },
                  blank: { PanelLogic.blankProviderEntry(kind: "workbuddy", name: "workbuddy") },

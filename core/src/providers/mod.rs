@@ -1,9 +1,7 @@
 pub mod antigravity;
-pub mod commandcode;
 pub mod workbuddy;
 
 use axum::body::Bytes;
-use axum::http::StatusCode;
 use serde_json::Value;
 
 use crate::app::App;
@@ -17,7 +15,6 @@ pub enum Provider {
     ChatCompletions { base_url: String, api_key: String },
     Responses { base_url: String, api_key: String },
     Workbuddy,
-    CommandCode,
     Antigravity,
 }
 
@@ -36,14 +33,13 @@ impl Provider {
         match self {
             Self::ChatCompletions { .. } | Self::Workbuddy => Protocol::Chat,
             Self::Responses { .. } => Protocol::Responses,
-            Self::CommandCode | Self::Antigravity => Protocol::Generate,
+            Self::Antigravity => Protocol::Generate,
         }
     }
 
     pub fn channel(&self) -> Option<Channel> {
         match self {
             Self::Workbuddy => Some(Channel::Workbuddy),
-            Self::CommandCode => Some(Channel::Commandcode),
             Self::Antigravity => Some(Channel::Antigravity),
             Self::ChatCompletions { .. } | Self::Responses { .. } => None,
         }
@@ -86,7 +82,6 @@ impl Provider {
                     error: ApiError::unavailable("no_healthy_account", message),
                 }),
             },
-            Self::CommandCode => commandcode::send(app, payload).await,
             Self::Antigravity => app.antigravity.send(payload).await,
         }
     }
@@ -145,12 +140,7 @@ pub fn from_entry(provider: &Value) -> Provider {
     }
     match Channel::parse(kind) {
         Some(Channel::Workbuddy) => Provider::Workbuddy,
-        Some(Channel::Commandcode) => Provider::CommandCode,
         Some(Channel::Antigravity) => Provider::Antigravity,
         None => Provider::ChatCompletions { base_url, api_key },
     }
-}
-
-pub fn status_or_gateway(status: u16) -> StatusCode {
-    StatusCode::from_u16(status).unwrap_or(StatusCode::BAD_GATEWAY)
 }

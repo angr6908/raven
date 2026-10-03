@@ -3,7 +3,7 @@ import Testing
 @testable import Raven
 
 private let usageFixture = """
-{"object":"list","data":[{"id":"a866d626-8611-4c6d-a5cf-6f45d178345f","timestamp":"2026-10-01T14:33:08Z","account":"skhskshsksjjdhdhska196@gmail.com","model":"Qwen3.8-Flash@CommandCode","upstream_model":"Qwen/Qwen3.8-Flash","stream":true,"status":200,"input_tokens":160923,"output_tokens":164,"cached_tokens":159744,"total_tokens":161087,"cache_read_rate":0.9926735146622919,"latency_ms":6056,"ttft_ms":4003,"reasoning_effort":"xhigh","finish_reason":"tool_calls","cost_usd":0.0028098339999999998,"provider":"commandcode","alias":"Qwen3.8-Flash@CommandCode","request_id":"a866d626-8611-4c6d-a5cf-6f45d178345f","token_breakdown":{"input":{"total_tokens":160923,"cache_read_tokens":159744,"cache_write_tokens":0},"output":{"total_tokens":164}}}]}
+{"object":"list","data":[{"id":"a866d626-8611-4c6d-a5cf-6f45d178345f","timestamp":"2026-10-01T14:33:08Z","account":"skhskshsksjjdhdhska196@gmail.com","model":"Qwen3.8-Flash@WorkBuddy","upstream_model":"Qwen/Qwen3.8-Flash","stream":true,"status":200,"input_tokens":160923,"output_tokens":164,"cached_tokens":159744,"total_tokens":161087,"cache_read_rate":0.9926735146622919,"latency_ms":6056,"ttft_ms":4003,"reasoning_effort":"xhigh","finish_reason":"tool_calls","cost_usd":0.0028098339999999998,"provider":"workbuddy","alias":"Qwen3.8-Flash@WorkBuddy","request_id":"a866d626-8611-4c6d-a5cf-6f45d178345f","token_breakdown":{"input":{"total_tokens":160923,"cache_read_tokens":159744,"cache_write_tokens":0},"output":{"total_tokens":164}}}]}
 """
 
 private let usageMinimal = """
@@ -15,9 +15,9 @@ struct PanelDecodeTests {
         let response = try PanelJSON.decoder.decode(UsageListResponse.self, from: Data(usageFixture.utf8))
         #expect(response.object == "list")
         let record = try #require(response.data.first)
-        #expect(record.model == "Qwen3.8-Flash@CommandCode")
-        #expect(record.alias == "Qwen3.8-Flash@CommandCode")
-        #expect(record.displayKey == "Qwen3.8-Flash@CommandCode")
+        #expect(record.model == "Qwen3.8-Flash@WorkBuddy")
+        #expect(record.alias == "Qwen3.8-Flash@WorkBuddy")
+        #expect(record.displayKey == "Qwen3.8-Flash@WorkBuddy")
         #expect(record.inputTokens == 160_923)
         #expect(record.totalTokens == 161_087)
         #expect(record.costUsd > 0.0028 && record.costUsd < 0.0029)
@@ -40,24 +40,12 @@ struct PanelDecodeTests {
 
     @Test func healthShape() throws {
         let fixture = """
-        {"status":"ok","detail":"","version":"1.0.0","api":"https://api.commandcode.ai","accounts":5,"pools":{"commandcode":1,"workbuddy":3,"antigravity":1}}
+        {"status":"ok","detail":"","version":"1.0.0","accounts":4,"pools":{"workbuddy":3,"antigravity":1}}
         """
         let health = try PanelJSON.decoder.decode(HealthResponse.self, from: Data(fixture.utf8))
         #expect(health.status == "ok")
-        #expect(health.accounts == 5)
+        #expect(health.accounts == 4)
         #expect(health.pools?["workbuddy"] == 3)
-    }
-
-    @Test func limitsAllMillisecondEpochs() throws {
-        let fixture = """
-        {"accounts":[{"name":"skhskshsksjjdhdhska196@gmail.com","provider":"commandcode","monthly_credits":4.986658349,"monthly_cap":10.0,"five_hour_cap":3.0,"five_hour_used":0.619145408,"five_hour_reset_at":1790877955949,"weekly_cap":6.0,"weekly_used":0.619145408,"weekly_reset_at":1791464755949,"purchased_credits":0.0,"source":"live","fetched_at":"2026-10-01T14:32:41Z"}]}
-        """
-        let limits = try PanelJSON.decoder.decode(LimitsResponse.self, from: Data(fixture.utf8))
-        let row = try #require(limits.accounts.first)
-        #expect(row.fiveHourResetAt > 1_700_000_000_000)
-        #expect(row.weeklyResetAt > row.fiveHourResetAt)
-        #expect(row.source == "live")
-        #expect(abs(row.monthlyCredits - 4.986658349) < 0.0001)
     }
 
     @Test func errorEnvelopeDecodes() throws {
@@ -120,7 +108,7 @@ struct ProviderRoundTripTests {
     }
 
     @Test func managedKindClassification() throws {
-        #expect(ProviderEntry(name: "cc", kind: "commandcode").isManaged)
+        #expect(ProviderEntry(name: "wb", kind: "workbuddy").isManaged)
         #expect(!ProviderEntry(name: "cc", kind: "openai").isManaged)
         #expect(!ProviderEntry(name: "cc", kind: nil).isManaged)
     }
@@ -217,7 +205,7 @@ struct AggregationTests {
     @Test func tpsAndStripVendor() throws {
         #expect(PanelFormats.tps(outputTokens: 100, latencyMs: 2000) == 50)
         #expect(PanelFormats.tps(outputTokens: 100, latencyMs: 0) == nil)
-        #expect(PanelAggregation.stripModelVendorAndProvider("Qwen/Qwen3.8-Flash@CommandCode") == "Qwen3.8-Flash")
+        #expect(PanelAggregation.stripModelVendorAndProvider("Qwen/Qwen3.8-Flash@WorkBuddy") == "Qwen3.8-Flash")
         #expect(PanelAggregation.stripModelVendorAndProvider("glm-4.6") == "glm-4.6")
         #expect(PanelAggregation.stripModelVendorAndProvider("vendor/gpt@") == "gpt")
     }
@@ -241,22 +229,6 @@ struct AggregationTests {
     }
 }
 
-private func decodeLimits(_ json: String) throws -> LimitRow {
-    try PanelJSON.decoder.decode(LimitsResponse.self, from: Data(json.utf8)).accounts[0]
-}
-
-private let limitsLive = """
-{"accounts":[{"name":"a@b.c","provider":"commandcode","plan":"pro","monthly_credits":450.0,"monthly_cap":1000.0,"purchased_credits":200.0,"five_hour_cap":100.0,"five_hour_used":25.0,"five_hour_reset_at":1,"weekly_cap":500.0,"weekly_used":500.0,"weekly_reset_at":2,"source":"live","fetched_at":null,"error":null}]}
-"""
-
-private let limitsReauth = """
-{"accounts":[{"name":"a@b.c","provider":"commandcode","monthly_credits":0,"monthly_cap":0,"five_hour_cap":0,"five_hour_used":0,"five_hour_reset_at":0,"weekly_cap":0,"weekly_used":0,"weekly_reset_at":0,"purchased_credits":0,"source":"reauth_required","error":"sign in again"}]}
-"""
-
-private let limitsStored = """
-{"accounts":[{"name":"a@b.c","provider":"commandcode","monthly_credits":0,"monthly_cap":0,"five_hour_cap":0,"five_hour_used":0,"five_hour_reset_at":0,"weekly_cap":0,"weekly_used":0,"weekly_reset_at":0,"purchased_credits":0,"source":"stored","fetched_at":"2026-01-01T00:00:00Z","error":null}]}
-"""
-
 private let quotaFixture = """
 {"accounts":[{"name":"hzhouuz","email":"u@gmail.com","project":null,"error":null,"groups":[{"displayName":"Gemini Models","description":null,"buckets":[{"bucketId":"g5","displayName":"Five Hour Limit Remaining","window":null,"resetTime":null,"remainingFraction":0.55},{"bucketId":"gw","displayName":"Weekly Limit Remaining","window":null,"resetTime":null,"remainingFraction":0.034}]},{"displayName":"Claude and GPT models","description":null,"buckets":[{"bucketId":"c5","displayName":"Five Hour Limit Remaining","window":null,"resetTime":null,"remainingFraction":1.0},{"bucketId":"cm","displayName":"Claude monthly limit remaining","window":null,"resetTime":null,"remainingFraction":0.0}]}]}]}
 """
@@ -268,8 +240,6 @@ struct QuotaClassificationTests {
         #expect(AccountQuota.quotaPercent(0) == "0%")
         #expect(AccountQuota.quotaPercent(2) == "100%")
         #expect(AccountQuota.quotaPercent(-1) == "0%")
-        #expect(AccountQuota.capFraction(used: 25, cap: 100) == 0.75)
-        #expect(AccountQuota.capFraction(used: 5, cap: 0) == nil)
     }
 
     @Test func resetCountdownFromEpochMs() {
@@ -312,27 +282,6 @@ struct QuotaClassificationTests {
                                              column: columns[1], first: false) == .dash)
     }
 
-    @Test func commandCodeCells() throws {
-        let live = try decodeLimits(limitsLive)
-        #expect(AccountQuota.commandCodeCell(live, period: .fiveHour, first: true)
-                    == .value(percent: "75%", reset: "now", title: "5-hour limit remaining", fraction: 0.75))
-        #expect(AccountQuota.commandCodeCell(live, period: .weekly, first: false)
-                    == .value(percent: "0%", reset: "now", title: "Weekly limit remaining", fraction: 0))
-        let monthly = AccountQuota.commandCodeCell(live, period: .monthly, first: false)
-        #expect(monthly == .value(percent: "45%", reset: nil,
-                                  title: "450 credits remaining of 1000 · +200 purchased", fraction: 0.45))
-
-        let reauth = try decodeLimits(limitsReauth)
-        #expect(AccountQuota.commandCodeCell(reauth, period: .fiveHour, first: true)
-                    == .badge("sign in again", "sign in again"))
-        #expect(AccountQuota.commandCodeCell(reauth, period: .weekly, first: false) == .dash)
-
-        let stored = try decodeLimits(limitsStored)
-        #expect(AccountQuota.commandCodeCell(stored, period: .fiveHour, first: true)
-                    == .badge("unavailable", "Live quota data is unavailable"))
-        #expect(AccountQuota.commandCodeCell(stored, period: .monthly, first: false) == .dash)
-    }
-
     @Test func numberFormatting() {
         #expect(AccountQuota.creditsText(12345) == "12,345")
         #expect(AccountQuota.numberText(450) == "450")
@@ -349,20 +298,20 @@ struct ModelZoneLogicTests {
     }
 
     @Test func smartAliasForStripsVendorPrefix() {
-        #expect(PanelLogic.smartAliasFor(modelName: "glm-4.6", providerName: "CommandCode") == "glm-4.6@CommandCode")
+        #expect(PanelLogic.smartAliasFor(modelName: "glm-4.6", providerName: "WorkBuddy") == "glm-4.6@WorkBuddy")
         #expect(PanelLogic.smartAliasFor(modelName: "MiniMax/MiniMax-M3", providerName: "cc") == "MiniMax-M3@cc")
         #expect(PanelLogic.smartAliasFor(modelName: "", providerName: "p") == "@p")
     }
 
     @Test func smartAliasStateDetection() {
-        let owner = "CommandCode"
-        let allSmart = [model("glm-4.6", alias: "glm-4.6@CommandCode"), model("deepseek-v3.2", alias: "deepseek-v3.2@CommandCode")]
+        let owner = "WorkBuddy"
+        let allSmart = [model("glm-4.6", alias: "glm-4.6@WorkBuddy"), model("deepseek-v3.2", alias: "deepseek-v3.2@WorkBuddy")]
         let smart = !allSmart.isEmpty && allSmart.allSatisfy {
             $0.name.isEmpty || $0.alias == PanelLogic.smartAliasFor(modelName: $0.name, providerName: owner)
         }
         #expect(smart)
 
-        let blankName: [ProviderModelDef] = [model("", alias: nil), model("glm-4.6", alias: "glm-4.6@CommandCode")]
+        let blankName: [ProviderModelDef] = [model("", alias: nil), model("glm-4.6", alias: "glm-4.6@WorkBuddy")]
         #expect(blankName.allSatisfy { $0.name.isEmpty || $0.alias == PanelLogic.smartAliasFor(modelName: $0.name, providerName: owner) })
 
         let edited: [ProviderModelDef] = [model("glm-4.6", alias: "custom-alias")]
@@ -423,9 +372,9 @@ struct ModelZoneLogicTests {
     }
 
     @Test func blankProviderEntryShapes() {
-        let entry = PanelLogic.blankProviderEntry(kind: "commandcode", name: "CommandCode")
-        #expect(entry.name == "CommandCode")
-        #expect(entry.kind == "commandcode")
+        let entry = PanelLogic.blankProviderEntry(kind: "workbuddy", name: "WorkBuddy")
+        #expect(entry.name == "WorkBuddy")
+        #expect(entry.kind == "workbuddy")
         #expect(entry.disabled == false)
         #expect(entry.baseUrl == "")
         #expect(entry.apiKeyEntries.isEmpty)

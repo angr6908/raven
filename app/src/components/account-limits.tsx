@@ -1,11 +1,8 @@
 import { Clock } from "lucide-react"
 
-import { type AccountLimits, type AntigravityQuotaAccount } from "@/lib/api"
+import { type AntigravityQuotaAccount } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { Dash } from "@/components/dash"
-
-
-export type UsagePeriod = "fiveHour" | "weekly" | "monthly"
 
 function quotaPercent(fraction: number): string {
   const value = Math.max(0, Math.min(1, fraction)) * 100
@@ -47,88 +44,6 @@ function QuotaValue({
         </span>
       ) : null}
     </span>
-  )
-}
-
-function capFraction(
-  used: number | null,
-  cap: number | null
-): number | null {
-  if (used == null || cap == null || cap <= 0) return null
-  return Math.max(0, Math.min(1, (cap - used) / cap))
-}
-
-export function CommandCodeUsageCell({
-  limits,
-  period,
-  first,
-}: {
-  limits: AccountLimits
-  period: UsagePeriod
-  first: boolean
-}) {
-  if (limits.source === "reauth_required") {
-    return first ? (
-      <Badge variant="secondary" title={limits.error ?? "Live quota data is unavailable"}>
-        sign in again
-      </Badge>
-    ) : (
-      <Dash />
-    )
-  }
-  if (limits.source !== "live") {
-    return first ? (
-      <Badge variant="secondary" title={limits.error ?? "Live quota data is unavailable"}>
-        unavailable
-      </Badge>
-    ) : (
-      <Dash />
-    )
-  }
-
-  if (period === "fiveHour") {
-    const fraction = capFraction(limits.five_hour_used, limits.five_hour_cap)
-    if (fraction == null) return <Dash />
-    return (
-      <QuotaValue
-        fraction={fraction}
-        reset={quotaResetShort(
-          limits.five_hour_reset_at
-            ? new Date(limits.five_hour_reset_at).toISOString()
-            : undefined
-        )}
-        title="5-hour limit remaining"
-      />
-    )
-  }
-  if (period === "weekly") {
-    const fraction = capFraction(limits.weekly_used, limits.weekly_cap)
-    if (fraction == null) return <Dash />
-    return (
-      <QuotaValue
-        fraction={fraction}
-        reset={quotaResetShort(
-          limits.weekly_reset_at
-            ? new Date(limits.weekly_reset_at).toISOString()
-            : undefined
-        )}
-        title="Weekly limit remaining"
-      />
-    )
-  }
-  const cap = limits.monthly_cap ?? 0
-  if (limits.monthly_credits == null || cap <= 0) return <Dash />
-  const remaining = Math.min(limits.monthly_credits, cap)
-  return (
-    <QuotaValue
-      fraction={remaining / cap}
-      reset={null}
-      title={
-        limits.purchased_credits
-          ? `${remaining} credits remaining of ${cap} · +${limits.purchased_credits} purchased`
-          : `${remaining} credits remaining of ${cap}`
-      }
-    />
   )
 }
 

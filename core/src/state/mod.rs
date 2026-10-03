@@ -26,7 +26,6 @@ pub(crate) fn failed(status: StatusCode, code: &str, message: &str) -> Response 
 }
 
 pub async fn handle_health(State(app): State<Arc<App>>) -> Response {
-    let commandcode = app.accounts.serving(Channel::Commandcode).len();
     let workbuddy = app.accounts.serving(Channel::Workbuddy).len();
     let antigravity = app.antigravity.pool().len();
     (
@@ -35,10 +34,8 @@ pub async fn handle_health(State(app): State<Arc<App>>) -> Response {
             "status": "ok",
             "detail": "",
             "version": VERSION,
-            "api": app.commandcode.api_base,
-            "accounts": commandcode + workbuddy + antigravity,
+            "accounts": workbuddy + antigravity,
             "pools": {
-                "commandcode": commandcode,
                 "workbuddy": workbuddy,
                 "antigravity": antigravity,
             },

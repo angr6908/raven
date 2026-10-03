@@ -5,7 +5,6 @@ use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use axum::Json;
-use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
 use std::collections::HashMap;
@@ -19,21 +18,15 @@ pub const ACCOUNT_FILE: &str = "accounts.json";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Channel {
-    Commandcode,
     Workbuddy,
     Antigravity,
 }
 
 impl Channel {
-    pub const ALL: [Channel; 3] = [
-        Channel::Commandcode,
-        Channel::Workbuddy,
-        Channel::Antigravity,
-    ];
+    pub const ALL: [Channel; 2] = [Channel::Workbuddy, Channel::Antigravity];
 
     pub const fn as_str(self) -> &'static str {
         match self {
-            Channel::Commandcode => "commandcode",
             Channel::Workbuddy => "workbuddy",
             Channel::Antigravity => "antigravity",
         }
@@ -52,30 +45,12 @@ impl std::fmt::Display for Channel {
     }
 }
 
-pub const DEFAULT_MONTHLY_CREDITS: f64 = 10.0;
-
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct Account {
     #[serde(default)]
     pub name: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub provider: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub key: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub session_token: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub email: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub password: String,
-    #[serde(default, skip_serializing_if = "String::is_empty")]
-    pub plan: String,
-    #[serde(default)]
-    pub monthly_credits: f64,
-    #[serde(default)]
-    pub five_hour_cap: f64,
-    #[serde(default)]
-    pub weekly_cap: f64,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub workbuddy_access_token: String,
 
@@ -117,26 +92,13 @@ pub struct Account {
 }
 
 impl Account {
-    pub fn provider(&self) -> String {
-        if self.provider.is_empty() {
-            Channel::Commandcode.to_string()
-        } else {
-            self.provider.clone()
-        }
-    }
-
     pub fn channel(&self) -> Option<Channel> {
-        if self.provider.is_empty() {
-            Some(Channel::Commandcode)
-        } else {
-            Channel::parse(&self.provider)
-        }
+        Channel::parse(&self.provider)
     }
 
     pub fn has_live_credentials(&self) -> bool {
-        !self.session_token.is_empty()
-            || !self.password.is_empty()
-            || !self.workbuddy_access_token.is_empty()
+        !self.workbuddy_access_token.is_empty()
+            || !self.workbuddy_refresh_token.is_empty()
             || !self.antigravity_access_token.is_empty()
             || !self.antigravity_refresh_token.is_empty()
     }
@@ -153,16 +115,6 @@ impl Account {
     }
 }
 
-pub fn monthly_cap(account: &Account) -> f64 {
-    if account.monthly_credits > 0.0 {
-        account.monthly_credits
-    } else if account.channel() == Some(Channel::Commandcode) {
-        DEFAULT_MONTHLY_CREDITS
-    } else {
-        0.0
-    }
-}
-
 fn merge_string(target: &mut String, patch: &str) {
     if !patch.is_empty() {
         *target = patch.trim().to_string();
@@ -173,10 +125,6 @@ fn merge_string(target: &mut String, patch: &str) {
 pub struct AccountView {
     pub name: String,
     pub provider: String,
-    pub has_key: bool,
-    pub email: String,
-    pub has_session_token: bool,
-    pub has_password: bool,
     pub workbuddy_uid: String,
     pub workbuddy_nickname: String,
     pub antigravity_email: String,
@@ -187,12 +135,8 @@ pub struct AccountView {
 impl AccountView {
     pub fn new(account: Account) -> Self {
         Self {
-            provider: account.provider(),
+            provider: account.provider.clone(),
             name: account.name,
-            has_key: !account.key.is_empty(),
-            email: account.email,
-            has_session_token: !account.session_token.is_empty(),
-            has_password: !account.password.is_empty(),
             workbuddy_uid: account.workbuddy_uid,
             workbuddy_nickname: account.workbuddy_nickname,
             antigravity_email: account.antigravity_email,
@@ -217,14 +161,6 @@ pub struct AccountsManager {
 pub struct AccountPatch {
     #[serde(default, rename = "new_name")]
     pub name: String,
-    #[serde(default)]
-    pub key: String,
-    #[serde(default)]
-    pub session_token: String,
-    #[serde(default)]
-    pub email: String,
-    #[serde(default)]
-    pub password: String,
     #[serde(default)]
     pub workbuddy_access_token: String,
     #[serde(default)]
@@ -302,7 +238,7 @@ impl AccountsManager {
             .filter(|account| {
                 account.channel() == Some(channel)
                     && !account.disabled
-                    && (!account.key.is_empty() || account.has_live_credentials())
+                    && account.has_live_credentials()
             })
             .collect()
     }
@@ -311,10 +247,6 @@ impl AccountsManager {
         let mut account = account;
         for field in [
             &mut account.name,
-            &mut account.key,
-            &mut account.session_token,
-            &mut account.email,
-            &mut account.password,
             &mut account.workbuddy_access_token,
             &mut account.workbuddy_refresh_token,
             &mut account.workbuddy_domain,
@@ -338,9 +270,6 @@ impl AccountsManager {
         if account.name.is_empty() {
             return Err("account name is required".to_string());
         }
-        if !matches!(channel, Channel::Workbuddy | Channel::Antigravity) && account.key.is_empty() {
-            return Err("account key is required".to_string());
-        }
         if channel == Channel::Workbuddy
             && account.workbuddy_access_token.is_empty()
             && account.workbuddy_refresh_token.is_empty()
@@ -352,9 +281,6 @@ impl AccountsManager {
             && account.antigravity_refresh_token.is_empty()
         {
             return Err("antigravity accounts require a Google sign-in".to_string());
-        }
-        if channel == Channel::Commandcode && account.monthly_credits <= 0.0 {
-            account.monthly_credits = DEFAULT_MONTHLY_CREDITS;
         }
 
         let mut state = self
@@ -372,91 +298,6 @@ impl AccountsManager {
             state.accounts.push(account);
         }
         self.persist_doc(&state)
-    }
-
-    pub fn replace_session_token(&self, name: &str, session_token: &str) -> Result<(), String> {
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| "accounts mutex poisoned".to_string())?;
-        let Some(account) = state
-            .accounts
-            .iter_mut()
-            .find(|account| account.name == name)
-        else {
-            return Err(format!("no account named {name:?}"));
-        };
-        if account.session_token != session_token.trim() {
-            account.session_token = session_token.trim().to_string();
-        }
-        self.persist_doc(&state)
-    }
-
-    pub fn upsert_commandcode_credentials(
-        &self,
-        name: &str,
-        key: &str,
-        email: &str,
-        password: Option<&str>,
-        session_token: &str,
-    ) -> Result<String, String> {
-        let email = email.trim();
-        if email.is_empty() {
-            return Err("Command Code email is required".to_string());
-        }
-        let mut state = self
-            .state
-            .lock()
-            .map_err(|_| "accounts mutex poisoned".to_string())?;
-        let existing = state
-            .accounts
-            .iter()
-            .position(|account| {
-                account.channel() == Some(Channel::Commandcode) && account.email == email
-            })
-            .or_else(|| {
-                let name = name.trim();
-                if name.is_empty() {
-                    return None;
-                }
-                state.accounts.iter().position(|account| {
-                    account.channel() == Some(Channel::Commandcode) && account.name == name
-                })
-            });
-        match existing {
-            Some(index) => {
-                let account = &mut state.accounts[index];
-                if !key.trim().is_empty() {
-                    account.key = key.trim().to_string();
-                }
-                account.provider = Channel::Commandcode.to_string();
-                account.email = email.to_string();
-                if let Some(password) = password.filter(|password| !password.is_empty()) {
-                    account.password = password.to_string();
-                }
-                if !session_token.is_empty() {
-                    account.session_token = session_token.to_string();
-                }
-                account.name = email.to_string();
-            }
-            None => {
-                if key.trim().is_empty() {
-                    return Err("API key is required for a new Command Code account".to_string());
-                }
-                state.accounts.push(Account {
-                    name: email.to_string(),
-                    provider: Channel::Commandcode.to_string(),
-                    key: key.trim().to_string(),
-                    email: email.to_string(),
-                    password: password.unwrap_or_default().to_string(),
-                    session_token: session_token.to_string(),
-                    monthly_credits: DEFAULT_MONTHLY_CREDITS,
-                    ..Account::default()
-                });
-            }
-        };
-        self.persist_doc(&state)?;
-        Ok(email.to_string())
     }
 
     pub fn update(&self, name: &str, patch: AccountPatch) -> Result<(), String> {
@@ -477,10 +318,6 @@ impl AccountsManager {
         };
         {
             let current = &mut state.accounts[index];
-            merge_string(&mut current.key, &patch.key);
-            merge_string(&mut current.session_token, &patch.session_token);
-            merge_string(&mut current.email, &patch.email);
-            merge_string(&mut current.password, &patch.password);
             merge_string(
                 &mut current.workbuddy_access_token,
                 &patch.workbuddy_access_token,
@@ -615,19 +452,4 @@ pub async fn handle_remove(
         Ok(()) => (StatusCode::OK, Json(json!({"ok": true, "name": name}))).into_response(),
         Err(err) => failed(StatusCode::NOT_FOUND, "account_not_found", &err),
     }
-}
-
-pub async fn handle_limits(State(state): State<Arc<App>>) -> Response {
-    let accounts: Vec<_> = state
-        .accounts
-        .list()
-        .into_iter()
-        .filter(|account| account.channel() == Some(Channel::Commandcode))
-        .collect();
-    let futures = accounts.into_iter().map(|account| {
-        let limits = Arc::clone(&state.limits);
-        async move { limits.get(&account).await }
-    });
-    let accounts = join_all(futures).await;
-    (StatusCode::OK, Json(json!({"accounts": accounts}))).into_response()
 }
