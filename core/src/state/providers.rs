@@ -114,6 +114,12 @@ impl Store {
         })
     }
 
+    pub fn find_with_effort<'a>(&self, model: &'a str) -> Option<(&'a str, &'static str)> {
+        let (base, effort) = split_effort(model)?;
+        let entry = self.find(base)?;
+        effort_level(entry.model.pointer("/thinking/levels"), effort).then_some((base, effort))
+    }
+
     pub fn commandcode_model(&self, model: &str) -> Option<String> {
         if model.is_empty() {
             return None;
@@ -141,6 +147,31 @@ fn matching_model(provider: &Value, model: &str) -> Option<Value> {
                 || entry.get("name").and_then(Value::as_str) == Some(model)
         })
         .cloned()
+}
+
+pub(crate) fn canonical_effort(level: &str) -> Option<&'static str> {
+    let lower = level.trim().to_ascii_lowercase();
+    super::models::EFFORT_LEVELS
+        .iter()
+        .copied()
+        .find(|level| *level == lower)
+}
+
+pub(crate) fn effort_level(levels: Option<&Value>, effort: &str) -> bool {
+    let curated: Vec<&str> = levels
+        .and_then(Value::as_array)
+        .map(|levels| levels.iter().filter_map(Value::as_str).collect())
+        .unwrap_or_default();
+    curated.is_empty() || curated.iter().any(|level| level == &effort)
+}
+
+pub(crate) fn split_effort(model: &str) -> Option<(&str, &'static str)> {
+    let at = model.rfind('@')?;
+    let (base, suffix) = model.split_at(at);
+    if base.is_empty() {
+        return None;
+    }
+    canonical_effort(&suffix[1..]).map(|effort| (base, effort))
 }
 
 #[cfg(test)]
@@ -215,6 +246,37 @@ mod tests {
         })]);
         let entry = store.find("only-alias").expect("alias matches");
         assert_eq!(entry.upstream_model("client-model"), "client-model");
+    }
+
+    #[test]
+    fn an_effort_suffix_splits_only_on_a_canonical_level() {
+        assert_eq!(split_effort("glm-5.3@workbuddy@high"), Some(("glm-5.3@workbuddy", "high")));
+        assert_eq!(split_effort("m@xhigh"), Some(("m", "xhigh")));
+        assert_eq!(split_effort("m@HIGH"), Some(("m", "high")));
+        assert_eq!(split_effort("glm-5.3@workbuddy"), None);
+        assert_eq!(split_effort("deepseek-v4.1-flash@Experiential Labs"), None);
+        assert_eq!(split_effort("m@ultra"), None);
+        assert_eq!(split_effort("@high"), None);
+        assert_eq!(split_effort("high"), None);
+    }
+
+    #[test]
+    fn find_with_effort_requires_a_level_the_entry_declares() {
+        let store = store_with(vec![json!({
+            "name": "P",
+            "kind": "openai",
+            "base-url": "https://api.example/v1",
+            "models": [
+                {"name": "glm-5.3", "alias": "glm-5.3@P", "thinking": {"levels": ["low", "high"]}},
+                {"name": "plain", "alias": "plain@P"},
+            ],
+        })]);
+        assert_eq!(store.find_with_effort("glm-5.3@P@high"), Some(("glm-5.3@P", "high")));
+        assert_eq!(store.find_with_effort("glm-5.3@P@low"), Some(("glm-5.3@P", "low")));
+        assert_eq!(store.find_with_effort("glm-5.3@P@medium"), None);
+        assert_eq!(store.find_with_effort("plain@P@medium"), Some(("plain@P", "medium")));
+        assert_eq!(store.find_with_effort("glm-5.3@P"), None);
+        assert_eq!(store.find_with_effort("missing@P@high"), None);
     }
 }
 

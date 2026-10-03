@@ -12,7 +12,6 @@ use crate::app::App;
 use crate::state::accounts::Channel;
 use crate::state::failed;
 
-
 const MODEL_CACHE_TTL: Duration = Duration::from_secs(5 * 60);
 const ALIAS_PREFIX: &str = "cc-";
 

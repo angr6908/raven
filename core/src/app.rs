@@ -1,10 +1,10 @@
 use std::sync::Arc;
 use std::time::Duration;
 
+use crate::config::{Config, VERSION};
 use crate::providers::antigravity::Antigravity;
 use crate::providers::commandcode::{self, limits::AccountLimits, models::ModelCache};
 use crate::providers::workbuddy::Workbuddy;
-use crate::config::{Config, VERSION};
 use crate::state::accounts::{AccountsManager, Channel};
 use crate::state::catalog::CatalogCache;
 use crate::state::providers::Store;
@@ -20,6 +20,7 @@ pub struct App {
     pub catalog: Arc<CatalogCache>,
     pub workbuddy: Arc<Workbuddy>,
     pub antigravity: Arc<Antigravity>,
+    pub commandcode_auth: Arc<crate::providers::commandcode::auth::CommandCodeAuth>,
 
     pub client: reqwest::Client,
     pub commandcode: commandcode::Settings,
@@ -42,12 +43,18 @@ impl App {
         let accounts = Arc::new(AccountsManager::new(&config.data_dir)?);
         let workbuddy = Workbuddy::new(&config.data_dir, Arc::clone(&accounts), client.clone());
         let antigravity = Antigravity::new(Arc::clone(&accounts));
+        let commandcode_auth = Arc::new(crate::providers::commandcode::auth::CommandCodeAuth::new(
+            client.clone(),
+            commandcode.api_base.clone(),
+            user_agent.clone(),
+        ));
 
         Ok(Self {
             limits: Arc::new(AccountLimits::new(
                 client.clone(),
                 user_agent.clone(),
                 commandcode.clone(),
+                Arc::clone(&accounts),
             )),
             models: Arc::new(ModelCache::new(
                 client.clone(),
@@ -60,6 +67,7 @@ impl App {
             accounts,
             workbuddy,
             antigravity,
+            commandcode_auth,
             client,
             commandcode,
             work_dir: config.work_dir().to_string_lossy().into_owned(),

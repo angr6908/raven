@@ -226,18 +226,21 @@ impl Workbuddy {
     fn apply_error_policy(&self, uid: &str, kind: ErrKind, status: u16, body: &str) {
         match kind {
             ErrKind::HardCredit => {
-                self.pool.cooldown_until_tomorrow_4am(uid, "余额不足");
+                let reason = upstream_msg(body).unwrap_or_else(|| "余额不足".to_string());
+                self.pool.cooldown_until_tomorrow_4am(uid, &reason);
             }
             ErrKind::SoftRate => {
+                let reason = upstream_msg(body).unwrap_or_else(|| "429 rate limit".to_string());
                 self.pool
-                    .cooldown(uid, CoolKind::CoolSoft, SOFT_COOLDOWN, "429 rate limit");
+                    .cooldown(uid, CoolKind::CoolSoft, SOFT_COOLDOWN, &reason);
             }
             ErrKind::SessionDead => {
                 self.pool.disable(uid, "12153 session dead");
             }
             ErrKind::NotFound => {
+                let reason = upstream_msg(body).unwrap_or_else(|| "upstream 404".to_string());
                 self.pool
-                    .cooldown(uid, CoolKind::CoolSoft, SOFT_COOLDOWN, "upstream 404");
+                    .cooldown(uid, CoolKind::CoolSoft, SOFT_COOLDOWN, &reason);
             }
             _ => {
                 if status >= 500 {
@@ -245,7 +248,6 @@ impl Workbuddy {
                 }
             }
         }
-        let _ = body;
     }
 
     pub fn status(&self) -> Value {
@@ -538,4 +540,10 @@ pub(super) fn truncate(s: &str, n: usize) -> String {
     } else {
         s.to_string()
     }
+}
+
+pub(super) fn upstream_msg(body: &str) -> Option<String> {
+    let v: Value = serde_json::from_str(body).ok()?;
+    let msg = v.get("msg").and_then(Value::as_str).filter(|m| !m.trim().is_empty())?;
+    Some(truncate(msg, 200))
 }

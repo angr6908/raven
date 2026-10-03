@@ -32,7 +32,7 @@ pub async fn handle(State(app): State<Arc<App>>, ApiJson(req): ApiJson<ChatReque
     }
 }
 
-async fn run(app: Arc<App>, req: ChatRequest) -> Result<Response, Response> {
+async fn run(app: Arc<App>, mut req: ChatRequest) -> Result<Response, Response> {
     if req.model.is_empty() {
         return Err(DIALECT.error(&ApiError::bad_request("model is required")));
     }
@@ -40,12 +40,17 @@ async fn run(app: Arc<App>, req: ChatRequest) -> Result<Response, Response> {
         return Err(DIALECT.error(&ApiError::bad_request("messages is required")));
     }
 
-    let alias = req.model.clone();
     let stream = req.stream;
-    let effort = req.reasoning_effort.clone();
-    let target = route::resolve(&app, "chat", &alias).await;
+    let target = route::resolve(&app, "chat", &req.model).await;
+    let alias = target.alias.clone();
+    let mut effort = req.reasoning_effort.clone();
+    if effort.is_empty() {
+        effort = target.effort.clone();
+    }
     let protocol = target.provider.protocol();
     let exchange = Exchange::open(app, DIALECT, target, &alias, stream, &effort);
+    req.reasoning_effort = effort;
+    req.model = alias;
 
     match protocol {
         Protocol::Responses => via_responses(exchange, req).await,

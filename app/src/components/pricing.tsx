@@ -738,7 +738,6 @@ export function PricingView({ records }: { records: UsageRecord[] }) {
           <span className="text-destructive">Save failed.</span>
         ) : (
           <span className="text-muted-foreground">
-            Changes save automatically · USD per 1M tokens ·{" "}
             {unpricedCount > 0
               ? `${unpricedCount} model${unpricedCount === 1 ? "" : "s"} in use without prices`
               : "all used models priced"}

@@ -1,5 +1,4 @@
 import Foundation
-import SwiftUI
 
 nonisolated struct Provider: Identifiable, Codable, Hashable {
     var id = UUID()
@@ -21,12 +20,6 @@ nonisolated struct Provider: Identifiable, Codable, Hashable {
     var modelsURL: String { v1URL + "/models" }
 
     var host: String { URL(string: rootURL)?.host() ?? rootURL }
-
-    var accent: Color {
-        let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .indigo, .green, .mint, .cyan, .red]
-        let seed = id.uuidString.unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0x7fff_ffff }
-        return palette[seed % palette.count]
-    }
 }
 
 nonisolated struct ModelEntry: Identifiable, Codable, Hashable {
@@ -39,6 +32,30 @@ nonisolated struct ModelEntry: Identifiable, Codable, Hashable {
         case modelID = "id"
         case ownedBy = "owned_by"
         case contextWindow = "max_context_length"
+        case contextLength = "context_length"
+        case contextWindowAlias = "context_window"
+    }
+
+    init(modelID: String, ownedBy: String?, contextWindow: Int?) {
+        self.modelID = modelID
+        self.ownedBy = ownedBy
+        self.contextWindow = contextWindow
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        modelID = try container.decode(String.self, forKey: .modelID)
+        ownedBy = try container.decodeIfPresent(String.self, forKey: .ownedBy)
+        contextWindow = try container.decodeIfPresent(Int.self, forKey: .contextWindow)
+            ?? container.decodeIfPresent(Int.self, forKey: .contextWindowAlias)
+            ?? container.decodeIfPresent(Int.self, forKey: .contextLength)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.container(keyedBy: CodingKeys.self)
+        try container.encode(modelID, forKey: .modelID)
+        try container.encodeIfPresent(ownedBy, forKey: .ownedBy)
+        try container.encodeIfPresent(contextWindow, forKey: .contextWindow)
     }
 
     var owner: String { ownedBy ?? "Other" }
@@ -94,6 +111,11 @@ nonisolated enum Destination: Hashable {
     case pinned
     case recents
     case provider(UUID)
+    case overview
+    case usage
+    case accounts
+    case providersPage
+    case pricing
 
     var symbol: String {
         switch self {
@@ -101,6 +123,18 @@ nonisolated enum Destination: Hashable {
         case .pinned: "pin.fill"
         case .recents: "clock.arrow.circlepath"
         case .provider: "server.rack"
+        case .overview: "chart.bar.xaxis"
+        case .usage: "list.bullet.rectangle"
+        case .accounts: "person.badge.key.fill"
+        case .providersPage: "square.stack.3d.up.fill"
+        case .pricing: "tag"
+        }
+    }
+
+    var isLauncherPage: Bool {
+        switch self {
+        case .library, .pinned, .recents, .provider: true
+        case .overview, .usage, .accounts, .providersPage, .pricing: false
         }
     }
 }
@@ -140,23 +174,6 @@ nonisolated enum ModelFamily: Hashable {
         case .minimax: "waveform"
         case .glm: "hexagon"
         case .other: "cube"
-        }
-    }
-
-    var tint: Color {
-        switch self {
-        case .claude: .orange
-        case .gpt: .green
-        case .gemini: .blue
-        case .deepseek: .indigo
-        case .llama: .purple
-        case .mistral: .red
-        case .qwen: .cyan
-        case .grok: .gray
-        case .kimi: .teal
-        case .minimax: .pink
-        case .glm: .mint
-        case .other: .secondary
         }
     }
 }
@@ -211,12 +228,9 @@ nonisolated enum ProviderStatus: Hashable {
         }
     }
 
-    var tint: Color {
-        switch self {
-        case .failed: .red
-        case .ready: .green
-        case .loading, .empty: .secondary
-        }
+    var isFailure: Bool {
+        if case .failed = self { return true }
+        return false
     }
 }
 
@@ -247,7 +261,13 @@ nonisolated enum ContextWindow {
 
     static func label(_ tokens: Int) -> String {
         let thousand = 1_000, million = 1_000_000
-        if tokens >= million, tokens % million == 0 { return "\(tokens / million)M ctx" }
+        if tokens >= million {
+            if tokens % million == 0 { return "\(tokens / million)M ctx" }
+            var text = String(format: "%.2f", Double(tokens) / Double(million))
+            while text.hasSuffix("0") { text.removeLast() }
+            if text.hasSuffix(".") { text.removeLast() }
+            return "\(text)M ctx"
+        }
         if tokens >= thousand, tokens % thousand == 0 { return "\(tokens / thousand)K ctx" }
         return "\(tokens) ctx"
     }

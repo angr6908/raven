@@ -62,9 +62,13 @@ async fn run(app: Arc<App>, body: Bytes) -> Result<Response, Response> {
     let stream = req.get("stream").and_then(Value::as_bool).unwrap_or(false);
 
     let target = route::resolve(&app, "messages", &alias).await;
+    let alias = target.alias.clone();
     let protocol = target.provider.protocol();
     let upstream_model = target.upstream_model.clone();
-    let effort = messages_to_chat_request(&req, &upstream_model, stream).reasoning_effort;
+    let mut effort = messages_to_chat_request(&req, &upstream_model, stream).reasoning_effort;
+    if effort.is_empty() {
+        effort = target.effort.clone();
+    }
     let exchange = Exchange::open(app, DIALECT, target, &alias, stream, &effort);
 
     match protocol {

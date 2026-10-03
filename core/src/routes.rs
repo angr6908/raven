@@ -9,7 +9,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use crate::app::App;
-use crate::providers::{antigravity, workbuddy};
+use crate::providers::{antigravity, commandcode, workbuddy};
 use crate::{assets, proxy, state};
 
 pub fn build(app: Arc<App>, static_dir: &Path) -> Router {
@@ -26,9 +26,7 @@ pub fn build(app: Arc<App>, static_dir: &Path) -> Router {
 }
 
 fn routes() -> Router<Arc<App>> {
-    Router::new()
-        .merge(inference())
-        .merge(management())
+    Router::new().merge(inference()).merge(management())
 }
 
 fn inference() -> Router<Arc<App>> {
@@ -47,7 +45,10 @@ fn management() -> Router<Arc<App>> {
     Router::new()
         .route("/health", get(state::handle_health))
         .route("/models-dev", get(state::models::handle_models_dev))
-        .route("/providers/models", get(state::models::handle_provider_models))
+        .route(
+            "/providers/models",
+            get(state::models::handle_provider_models),
+        )
         .route(
             "/providers/{kind}/models",
             get(state::models::handle_provider_kind_models),
@@ -68,16 +69,21 @@ fn management() -> Router<Arc<App>> {
         )
         .route("/limits/all", get(state::accounts::handle_limits))
         .route(
+            "/accounts/commandcode/sign-in",
+            post(commandcode::panel::handle_sign_in),
+        )
+        .route(
+            "/accounts/commandcode/renew",
+            post(commandcode::panel::handle_renew),
+        )
+        .route(
             "/accounts",
             get(state::accounts::handle_list)
                 .post(state::accounts::handle_add)
                 .delete(state::accounts::handle_remove),
         )
         .route("/accounts/edit", post(state::accounts::handle_edit))
-        .route(
-            "/accounts/workbuddy",
-            post(workbuddy::panel::handle_add),
-        )
+        .route("/accounts/workbuddy", post(workbuddy::panel::handle_add))
         .route(
             "/accounts/workbuddy/local",
             get(workbuddy::panel::handle_local),
@@ -96,7 +102,10 @@ fn management() -> Router<Arc<App>> {
             "/accounts/antigravity",
             post(antigravity::panel::handle_add),
         )
-        .route("/antigravity/status", get(antigravity::panel::handle_status))
+        .route(
+            "/antigravity/status",
+            get(antigravity::panel::handle_status),
+        )
         .route(
             "/antigravity/refresh",
             post(antigravity::panel::handle_refresh),

@@ -52,24 +52,44 @@ async fn run(app: Arc<App>, body: Bytes) -> Result<Response, Response> {
     let stream = req.get("stream").and_then(Value::as_bool).unwrap_or(false);
 
     let target = route::resolve(&app, "responses", &alias).await;
+    let alias = target.alias.clone();
     let protocol = target.provider.protocol();
     match protocol {
         Protocol::Chat => {
-            let chat = responses_to_chat_request(&req, &alias, stream).map_err(|err| {
+            let mut chat = responses_to_chat_request(&req, &alias, stream).map_err(|err| {
                 PROTOCOL.error(&ApiError::bad_request(format!("build request: {err}")))
             })?;
+            if chat.reasoning_effort.is_empty() {
+                chat.reasoning_effort = target.effort.clone();
+            }
             let effort = chat.reasoning_effort.clone();
             let ex = Exchange::open(app, PROTOCOL, target, &alias, stream, &effort);
             via_chat(ex, req, chat).await
         }
         Protocol::Responses => {
-            let ex = Exchange::open(app, PROTOCOL, target, &alias, stream, "");
-            via_responses(ex, req).await
+            let mut req = req;
+            if target.effort.is_empty() {
+                let effort = req
+                    .pointer("/reasoning/effort")
+                    .and_then(Value::as_str)
+                    .unwrap_or("")
+                    .to_string();
+                let ex = Exchange::open(app, PROTOCOL, target, &alias, stream, &effort);
+                via_responses(ex, req).await
+            } else {
+                req["reasoning"] = serde_json::json!({"effort": target.effort});
+                let effort = target.effort.clone();
+                let ex = Exchange::open(app, PROTOCOL, target, &alias, stream, &effort);
+                via_responses(ex, req).await
+            }
         }
         _ => {
-            let chat = responses_to_chat_request(&req, &alias, true).map_err(|err| {
+            let mut chat = responses_to_chat_request(&req, &alias, true).map_err(|err| {
                 PROTOCOL.error(&ApiError::bad_request(format!("build request: {err}")))
             })?;
+            if chat.reasoning_effort.is_empty() {
+                chat.reasoning_effort = target.effort.clone();
+            }
             let effort = chat.reasoning_effort.clone();
             let ex = Exchange::open(app, PROTOCOL, target, &alias, stream, &effort);
             via_generate(ex, req, chat).await

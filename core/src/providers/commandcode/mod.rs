@@ -1,14 +1,16 @@
+pub mod auth;
 pub mod limits;
 pub mod models;
+pub mod panel;
 
 use axum::body::Bytes;
 use axum::http::{header, StatusCode};
 use std::time::Duration;
 
+use self::limits::LimitsData;
 use crate::app::App;
 use crate::net::error::ApiError;
 use crate::state::accounts::Channel;
-use self::limits::LimitsData;
 use crate::translate::generate::types::GenerateErrorEnvelope;
 
 use super::{SendFailure, Sent};
@@ -235,6 +237,7 @@ mod tests {
             purchased_credits: purchased,
             source: String::new(),
             fetched_at: String::new(),
+            error: None,
         }
     }
 

@@ -46,8 +46,10 @@ export type AccountProvider =
 export interface Account {
   name: string
   provider: AccountProvider
-  key: string
-  session_token?: string
+  has_key: boolean
+  email?: string
+  has_session_token: boolean
+  has_password: boolean
   workbuddy_uid?: string
   workbuddy_nickname?: string
   antigravity_email?: string
@@ -72,8 +74,9 @@ export interface AccountLimits {
   weekly_used: number
   weekly_reset_at: number
   purchased_credits?: number
-  source: "live" | "stored"
+  source: "live" | "stored" | "reauth_required"
   fetched_at?: string
+  error?: string
 }
 
 export interface AllLimits {
@@ -123,11 +126,31 @@ async function sendJSON<T>(path: string, method: string, body: unknown): Promise
   return (await res.json()) as T
 }
 
+export async function signInCommandCode(input: {
+  name: string
+  key?: string
+  email: string
+  password?: string
+  session_token?: string
+  captcha_response?: string
+}): Promise<{ ok: boolean; name: string }> {
+  return postJSON("/accounts/commandcode/sign-in", input)
+}
+
+export async function renewCommandCode(input: {
+  name: string
+  captcha_response: string
+}): Promise<{ ok: boolean; name: string }> {
+  return postJSON("/accounts/commandcode/renew", input)
+}
+
 export async function addAccount(input: {
   name: string
   provider?: AccountProvider
   key?: string
   session_token?: string
+  email?: string
+  password?: string
 }): Promise<{ ok: boolean; name: string }> {
   return postJSON("/accounts", input)
 }
@@ -137,6 +160,8 @@ export async function editAccount(input: {
   new_name?: string
   key?: string
   session_token?: string
+  email?: string
+  password?: string
   disabled?: boolean
 }): Promise<{ ok: boolean; name: string }> {
   return postJSON("/accounts/edit", input)

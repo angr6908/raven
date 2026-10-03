@@ -118,7 +118,9 @@ mod effort_menu_tests {
 
 pub(crate) fn provider_zone_name(provider: &Value) -> String {
     match crate::providers::from_entry(provider).channel() {
-        Some(channel @ (Channel::Workbuddy | Channel::Antigravity)) => channel.to_string(),
+        Some(channel @ (Channel::Workbuddy | Channel::Antigravity)) => {
+            channel.to_string()
+        }
         _ => provider
             .get("name")
             .and_then(Value::as_str)

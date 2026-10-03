@@ -14,6 +14,56 @@ enum LaunchError: LocalizedError {
 enum Launcher {
     static let slotCapabilities = "effort,max_effort,xhigh_effort,adaptive_thinking,context_management"
 
+    static let claudeTrustBlock = """
+        TRUST_JSON="$HOME/.claude.json"
+        TRUST_DIR="$(dirname "$TRUST_JSON")"
+        TRUST_ROOT="$(git -C "$PWD" rev-parse --show-toplevel 2>/dev/null || true)"
+        if [ -n "$TRUST_ROOT" ]; then
+          TRUST_ROOT="$(cd "$TRUST_ROOT" 2>/dev/null && pwd)" || TRUST_ROOT=""
+        fi
+        if [ -w "$TRUST_DIR" ] && { [ ! -e "$TRUST_JSON" ] || [ -w "$TRUST_JSON" ]; }; then
+          TRUST_NEW="$(mktemp "$TRUST_DIR/.claude.json.XXXXXX")" || TRUST_NEW=""
+          if [ -n "$TRUST_NEW" ]; then
+            if ! TRUST_JSON="$TRUST_JSON" TRUST_NEW="$TRUST_NEW" TRUST_ROOT="$TRUST_ROOT" ruby -rjson -e '
+            path, out, root = ENV.values_at("TRUST_JSON", "TRUST_NEW", "TRUST_ROOT")
+            config = begin
+              JSON.parse(File.read(path))
+            rescue Errno::ENOENT
+              {}
+            rescue JSON::ParserError
+              nil
+            end
+            if config.is_a?(Hash)
+              projects = config["projects"]
+              projects = config["projects"] = {} unless projects.is_a?(Hash)
+              [root, "/"].reject { |key| key.to_s.empty? }.each do |key|
+                entry = projects[key]
+                entry = projects[key] = {} unless entry.is_a?(Hash)
+                entry["hasTrustDialogAccepted"] = true
+              end
+              File.write(out, JSON.pretty_generate(config) + "\\n")
+              File.rename(out, path)
+            end
+            '; then
+              echo "raven: could not record workspace trust in $TRUST_JSON" >&2
+            fi
+            /bin/rm -f "$TRUST_NEW"
+          fi
+        fi
+        """
+
+    static let codexCatalogBlock = """
+        RAVEN_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+        RAVEN_CODEX_CATALOG="$RAVEN_ROOT/data/codex-models.json"
+        if command -v bun >/dev/null 2>&1 && [ -f "$RAVEN_ROOT/scripts/codex-model-catalog.mjs" ]; then
+          bun "$RAVEN_ROOT/scripts/codex-model-catalog.mjs" \\
+            --base-url "$RAVEN_API_BASE" --api-key "$RAVEN_API_KEY" \\
+            --out "$RAVEN_CODEX_CATALOG" >/dev/null 2>&1 \\
+            || echo "raven: could not refresh the Codex model catalog; using the last one" >&2
+        fi
+        rm -f "$HOME/.codex/models_cache.json"
+        """
+
     static func makeScript(provider: Provider,
                            model: String,
                            client: ProviderKind,
@@ -28,6 +78,10 @@ enum Launcher {
         lines.append("case \":$PATH:\" in")
         lines.append("  *\":$HOME/.bun/bin:\"*) ;;")
         lines.append("  *) [ -d \"$HOME/.bun/bin\" ] && PATH=\"$HOME/.bun/bin:$PATH\" ;;")
+        lines.append("esac")
+        lines.append("case \":$PATH:\" in")
+        lines.append("  *\":$HOME/.local/bin:\"*) ;;")
+        lines.append("  *) [ -d \"$HOME/.local/bin\" ] && PATH=\"$HOME/.local/bin:$PATH\" ;;")
         lines.append("esac")
         lines.append("cd \(shellQuote(workdir.path(percentEncoded: false)))")
         lines.append("")
@@ -52,6 +106,7 @@ enum Launcher {
                                           key: String,
                                           modelQ: String) {
         let isClaudeSlug = model.hasPrefix("claude-")
+        let override = ProviderStore.shared.windowOverride(providerID: provider.id, modelID: model)
         let configured = ProviderStore.shared.effectiveWindow(providerID: provider.id, modelID: model)
         let window = configured ?? ContextWindow.fallback
 
@@ -67,13 +122,14 @@ enum Launcher {
             lines.append("export ANTHROPIC_DEFAULT_\(slot)_MODEL_SUPPORTED_CAPABILITIES=\(shellQuote(slotCapabilities))")
         }
 
-        if configured != nil || !isClaudeSlug {
+        if override != nil || !isClaudeSlug {
             lines.append("export CLAUDE_CODE_MAX_CONTEXT_TOKENS=\(window)")
         }
         if window <= 1_000_000 {
             lines.append("export CLAUDE_CODE_AUTO_COMPACT_WINDOW=\(window)")
         }
         lines.append("export CLAUDE_CODE_ATTRIBUTION_HEADER=0")
+        lines.append(Self.claudeTrustBlock)
 
         var args = ["--model", modelQ]
         if !isClaudeSlug {
@@ -93,7 +149,8 @@ enum Launcher {
         let isGptSlug = model.hasPrefix("gpt-")
 
         lines.append("export RAVEN_API_KEY=\(key)")
-        lines.append("rm -f \"$HOME/.codex/models_cache.json\"")
+        lines.append("RAVEN_API_BASE=\(v1)")
+        lines.append(Self.codexCatalogBlock)
         var args: [String] = [
             "-c model_provider=raven",
             "-c model_providers.raven.name=Raven",
@@ -102,12 +159,12 @@ enum Launcher {
             "-c model_providers.raven.env_key=RAVEN_API_KEY",
             "-c model_providers.raven.request_max_retries=20",
             "-c model_providers.raven.stream_max_retries=20",
-            "-c web_search=disabled",
             "-m \(modelQ)",
         ]
         if configured != nil || !isGptSlug {
             args.append("-c model_context_window=\(configured ?? ContextWindow.fallback)")
         }
+        args.append("-c \"model_catalog_json=$RAVEN_CODEX_CATALOG\"")
         lines.append("exec codex \(args.joined(separator: " "))")
     }
 
@@ -121,7 +178,7 @@ enum Launcher {
         do {
             try ProviderStore.ensureConfigDirectory()
             try Data(script.utf8).write(to: scriptURL, options: .atomic)
-            try FileManager.default.setAttributes([.posixPermissions: 0o755],
+            try FileManager.default.setAttributes([.posixPermissions: 0o700],
                                                   ofItemAtPath: scriptURL.path(percentEncoded: false))
         } catch {
             throw LaunchError.notLaunched(error.localizedDescription)

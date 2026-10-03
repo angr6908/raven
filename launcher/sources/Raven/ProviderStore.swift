@@ -10,6 +10,13 @@ nonisolated struct RavenConfig: Codable {
     var workdir: String?
     var pinned: [ModelRef] = []
     var recents: [RecentLaunch] = []
+    var recentWorkdirs: [String] = []
+    var transient: TransientSettings?
+}
+
+nonisolated struct TransientSettings: Codable, Equatable {
+    var client: ProviderKind?
+    var workdir: String?
 }
 
 nonisolated extension RavenConfig {
@@ -23,6 +30,8 @@ nonisolated extension RavenConfig {
         workdir = try container.decodeIfPresent(String.self, forKey: .workdir)
         pinned = try container.decodeIfPresent([ModelRef].self, forKey: .pinned) ?? []
         recents = try container.decodeIfPresent([RecentLaunch].self, forKey: .recents) ?? []
+        recentWorkdirs = try container.decodeIfPresent([String].self, forKey: .recentWorkdirs) ?? []
+        transient = try container.decodeIfPresent(TransientSettings.self, forKey: .transient)
     }
 }
 
@@ -59,6 +68,7 @@ final class ProviderStore {
     private(set) var windowOverrides: [ModelWindowOverride] = []
     private(set) var pinned: [ModelRef] = []
     private(set) var recents: [RecentLaunch] = []
+    private(set) var recentWorkdirPaths: [String] = []
     private(set) var loading: Set<UUID> = []
     private(set) var errors: [UUID: String] = [:]
     private(set) var refreshedAt: [UUID: Date] = [:]
@@ -72,7 +82,11 @@ final class ProviderStore {
     }
 
     var workdir: URL = .homeDirectory {
-        didSet { persist() }
+        didSet {
+            guard workdir != oldValue else { return }
+            rememberWorkdir()
+            persist()
+        }
     }
 
     @ObservationIgnored private var isLoaded = false
@@ -92,12 +106,19 @@ final class ProviderStore {
             windowOverrides = config.windowOverrides
             pinned = config.pinned
             recents = config.recents
+            recentWorkdirPaths = config.recentWorkdirs
             client = config.selectedClient ?? .claude
             if let providerID = config.selectedProviderID, let modelID = config.selectedModelID {
                 selection = ModelRef(providerID: providerID, modelID: modelID)
             }
             if let path = config.workdir {
                 workdir = URL(filePath: path, directoryHint: .isDirectory)
+            }
+            if let transient = config.transient {
+                if let saved = transient.client { client = saved }
+                if let path = transient.workdir {
+                    workdir = URL(filePath: path, directoryHint: .isDirectory)
+                }
             }
         } catch {
             NSLog("raven: could not read config: \(error.localizedDescription)")
@@ -116,7 +137,9 @@ final class ProviderStore {
                 selectedClient: client,
                 workdir: workdir.path(percentEncoded: false),
                 pinned: pinned,
-                recents: recents
+                recents: recents,
+                recentWorkdirs: recentWorkdirPaths,
+                transient: TransientSettings(client: client, workdir: workdirPath)
             )
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
@@ -174,12 +197,22 @@ final class ProviderStore {
         return name.isEmpty ? "Choose…" : name
     }
 
+    func rememberWorkdir() {
+        let path = workdirPath
+        guard !recentWorkdirPaths.contains(path) else { return }
+        recentWorkdirPaths.insert(path, at: 0)
+        if recentWorkdirPaths.count > Self.recentsLimit {
+            recentWorkdirPaths.removeLast(recentWorkdirPaths.count - Self.recentsLimit)
+        }
+        persist()
+    }
+
     var recentWorkdirs: [URL] {
         var seen: Set<String> = []
         var result: [URL] = []
-        for recent in recents where !seen.contains(recent.workdir) {
-            seen.insert(recent.workdir)
-            result.append(URL(filePath: recent.workdir, directoryHint: .isDirectory))
+        for path in recentWorkdirPaths + recents.map(\.workdir) where !seen.contains(path) {
+            seen.insert(path)
+            result.append(URL(filePath: path, directoryHint: .isDirectory))
         }
         return Array(result.prefix(6))
     }
@@ -231,7 +264,15 @@ final class ProviderStore {
     }
 
     func moveProviders(from source: IndexSet, to destination: Int) {
-        providers.move(fromOffsets: source, toOffset: destination)
+        var moved: [Provider] = []
+        for index in source {
+            moved.append(providers[index])
+        }
+        for index in source.reversed() {
+            providers.remove(at: index)
+        }
+        let offset = destination - source.filter { $0 < destination }.count
+        providers.insert(contentsOf: moved, at: min(max(offset, 0), providers.count))
         persist()
     }
 

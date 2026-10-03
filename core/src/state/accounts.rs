@@ -1,9 +1,10 @@
-use axum::Json;
+use super::{bad_request, failed};
+use crate::app::App;
+use crate::net::ApiJson;
 use axum::extract::{Query, State};
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
-use crate::app::App;
-use crate::net::ApiJson;
+use axum::Json;
 use futures_util::future::join_all;
 use serde::{Deserialize, Serialize};
 use serde_json::json;
@@ -13,7 +14,6 @@ use std::os::unix::fs::PermissionsExt;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::Mutex;
-use super::{bad_request, failed};
 
 pub const ACCOUNT_FILE: &str = "accounts.json";
 
@@ -64,6 +64,10 @@ pub struct Account {
     pub key: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub session_token: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub email: String,
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub password: String,
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub plan: String,
     #[serde(default)]
@@ -131,6 +135,7 @@ impl Account {
 
     pub fn has_live_credentials(&self) -> bool {
         !self.session_token.is_empty()
+            || !self.password.is_empty()
             || !self.workbuddy_access_token.is_empty()
             || !self.antigravity_access_token.is_empty()
             || !self.antigravity_refresh_token.is_empty()
@@ -168,8 +173,10 @@ fn merge_string(target: &mut String, patch: &str) {
 pub struct AccountView {
     pub name: String,
     pub provider: String,
-    pub key: String,
-    pub session_token: String,
+    pub has_key: bool,
+    pub email: String,
+    pub has_session_token: bool,
+    pub has_password: bool,
     pub workbuddy_uid: String,
     pub workbuddy_nickname: String,
     pub antigravity_email: String,
@@ -182,8 +189,10 @@ impl AccountView {
         Self {
             provider: account.provider(),
             name: account.name,
-            key: account.key,
-            session_token: account.session_token,
+            has_key: !account.key.is_empty(),
+            email: account.email,
+            has_session_token: !account.session_token.is_empty(),
+            has_password: !account.password.is_empty(),
             workbuddy_uid: account.workbuddy_uid,
             workbuddy_nickname: account.workbuddy_nickname,
             antigravity_email: account.antigravity_email,
@@ -212,6 +221,10 @@ pub struct AccountPatch {
     pub key: String,
     #[serde(default)]
     pub session_token: String,
+    #[serde(default)]
+    pub email: String,
+    #[serde(default)]
+    pub password: String,
     #[serde(default)]
     pub workbuddy_access_token: String,
     #[serde(default)]
@@ -300,6 +313,8 @@ impl AccountsManager {
             &mut account.name,
             &mut account.key,
             &mut account.session_token,
+            &mut account.email,
+            &mut account.password,
             &mut account.workbuddy_access_token,
             &mut account.workbuddy_refresh_token,
             &mut account.workbuddy_domain,
@@ -359,6 +374,91 @@ impl AccountsManager {
         self.persist_doc(&state)
     }
 
+    pub fn replace_session_token(&self, name: &str, session_token: &str) -> Result<(), String> {
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "accounts mutex poisoned".to_string())?;
+        let Some(account) = state
+            .accounts
+            .iter_mut()
+            .find(|account| account.name == name)
+        else {
+            return Err(format!("no account named {name:?}"));
+        };
+        if account.session_token != session_token.trim() {
+            account.session_token = session_token.trim().to_string();
+        }
+        self.persist_doc(&state)
+    }
+
+    pub fn upsert_commandcode_credentials(
+        &self,
+        name: &str,
+        key: &str,
+        email: &str,
+        password: Option<&str>,
+        session_token: &str,
+    ) -> Result<String, String> {
+        let email = email.trim();
+        if email.is_empty() {
+            return Err("Command Code email is required".to_string());
+        }
+        let mut state = self
+            .state
+            .lock()
+            .map_err(|_| "accounts mutex poisoned".to_string())?;
+        let existing = state
+            .accounts
+            .iter()
+            .position(|account| {
+                account.channel() == Some(Channel::Commandcode) && account.email == email
+            })
+            .or_else(|| {
+                let name = name.trim();
+                if name.is_empty() {
+                    return None;
+                }
+                state.accounts.iter().position(|account| {
+                    account.channel() == Some(Channel::Commandcode) && account.name == name
+                })
+            });
+        match existing {
+            Some(index) => {
+                let account = &mut state.accounts[index];
+                if !key.trim().is_empty() {
+                    account.key = key.trim().to_string();
+                }
+                account.provider = Channel::Commandcode.to_string();
+                account.email = email.to_string();
+                if let Some(password) = password.filter(|password| !password.is_empty()) {
+                    account.password = password.to_string();
+                }
+                if !session_token.is_empty() {
+                    account.session_token = session_token.to_string();
+                }
+                account.name = email.to_string();
+            }
+            None => {
+                if key.trim().is_empty() {
+                    return Err("API key is required for a new Command Code account".to_string());
+                }
+                state.accounts.push(Account {
+                    name: email.to_string(),
+                    provider: Channel::Commandcode.to_string(),
+                    key: key.trim().to_string(),
+                    email: email.to_string(),
+                    password: password.unwrap_or_default().to_string(),
+                    session_token: session_token.to_string(),
+                    monthly_credits: DEFAULT_MONTHLY_CREDITS,
+                    ..Account::default()
+                });
+            }
+        };
+        self.persist_doc(&state)?;
+        Ok(email.to_string())
+    }
+
     pub fn update(&self, name: &str, patch: AccountPatch) -> Result<(), String> {
         let name = name.trim().to_string();
         if name.is_empty() {
@@ -379,11 +479,22 @@ impl AccountsManager {
             let current = &mut state.accounts[index];
             merge_string(&mut current.key, &patch.key);
             merge_string(&mut current.session_token, &patch.session_token);
-            merge_string(&mut current.workbuddy_access_token, &patch.workbuddy_access_token);
-            merge_string(&mut current.workbuddy_refresh_token, &patch.workbuddy_refresh_token);
+            merge_string(&mut current.email, &patch.email);
+            merge_string(&mut current.password, &patch.password);
+            merge_string(
+                &mut current.workbuddy_access_token,
+                &patch.workbuddy_access_token,
+            );
+            merge_string(
+                &mut current.workbuddy_refresh_token,
+                &patch.workbuddy_refresh_token,
+            );
             merge_string(&mut current.workbuddy_domain, &patch.workbuddy_domain);
             merge_string(&mut current.workbuddy_uid, &patch.workbuddy_uid);
-            merge_string(&mut current.workbuddy_enterprise_id, &patch.workbuddy_enterprise_id);
+            merge_string(
+                &mut current.workbuddy_enterprise_id,
+                &patch.workbuddy_enterprise_id,
+            );
             merge_string(&mut current.workbuddy_nickname, &patch.workbuddy_nickname);
             merge_string(
                 &mut current.antigravity_access_token,
@@ -438,9 +549,14 @@ impl AccountsManager {
     fn persist_doc(&self, state: &AccountsDoc) -> Result<(), String> {
         let data =
             serde_json::to_vec_pretty(state).map_err(|err| format!("marshal accounts: {err}"))?;
-        fs::write(&self.path, data)
-            .and_then(|()| fs::set_permissions(&self.path, fs::Permissions::from_mode(0o600)))
-            .map_err(|err| format!("write {}: {err}", self.path.display()))
+        let temp = self.path.with_extension("json.tmp");
+        let result = fs::write(&temp, data)
+            .and_then(|()| fs::set_permissions(&temp, fs::Permissions::from_mode(0o600)))
+            .and_then(|()| fs::rename(&temp, &self.path));
+        if result.is_err() {
+            let _ = fs::remove_file(&temp);
+        }
+        result.map_err(|err| format!("write {}: {err}", self.path.display()))
     }
 }
 
@@ -473,7 +589,6 @@ pub async fn handle_add(
     }
 }
 
-
 pub async fn handle_edit(
     State(state): State<Arc<App>>,
     ApiJson(body): ApiJson<EditAccountBody>,
@@ -490,7 +605,10 @@ pub async fn handle_remove(
 ) -> Response {
     let name = params.get("name").cloned().unwrap_or_default();
     if name.is_empty() {
-        return failed(StatusCode::BAD_REQUEST, "invalid_request_error", "name query param is required",
+        return failed(
+            StatusCode::BAD_REQUEST,
+            "invalid_request_error",
+            "name query param is required",
         );
     }
     match state.accounts.remove(&name) {
@@ -498,7 +616,6 @@ pub async fn handle_remove(
         Err(err) => failed(StatusCode::NOT_FOUND, "account_not_found", &err),
     }
 }
-
 
 pub async fn handle_limits(State(state): State<Arc<App>>) -> Response {
     let accounts: Vec<_> = state

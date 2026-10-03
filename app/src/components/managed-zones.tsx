@@ -59,7 +59,6 @@ export function ManagedZoneCards({
         blank={() => blankProviderEntry("commandcode", "CommandCode")}
         entry={commandcode}
         aliasOwner={commandcode?.name || "CommandCode"}
-        description="The curated Command Code catalog — these aliases are exactly what raven publishes to launchers on /v1/models. Shared by every Command Code account; unlisted model ids still route by name."
         fetchUpstream={async () =>
           (await fetchZoneModels("commandcode")).map((m) => ({
             id: m.id,
@@ -75,7 +74,6 @@ export function ManagedZoneCards({
         blank={() => blankProviderEntry("workbuddy", "workbuddy")}
         entry={providers.find((p) => p.kind === "workbuddy")}
         aliasOwner="workbuddy"
-        description="One catalog for every WorkBuddy account — the credentials are a pool that rotates and fails over, so the models are not tied to a single sign-in. Fetching pulls the live catalog through whichever account answers first (with the static CN table as a fallback). Turning this off disables the whole WorkBuddy channel."
         fetchUpstream={async () =>
           (await fetchZoneModels("workbuddy")).map((m) => ({
             id: m.id,
@@ -92,7 +90,6 @@ export function ManagedZoneCards({
         blank={() => blankProviderEntry("antigravity", "antigravity")}
         entry={antigravity}
         aliasOwner="antigravity"
-        description="Google Antigravity / Cloud Code Assist, reached with the Google sign-in on the Accounts tab. Pin the public model ids — raven picks the runtime variant (low / medium / high) per request from the effort the client asks for. Every signed-in Google account shares one pool and requests rotate across them."
         fetchUpstream={fetchAntigravity}
         presetEfforts={(name) => antigravityLevels.current.get(name) ?? []}
         emptyHint="No models pinned — fetch the catalog and pick, or add a row by hand. Unlisted antigravity ids still route by name."
@@ -108,7 +105,6 @@ function ZoneCard({
   blank,
   entry,
   aliasOwner,
-  description,
   fetchUpstream,
   emptyHint,
   presetEfforts,
@@ -121,7 +117,6 @@ function ZoneCard({
   blank: () => ProviderEntry
   entry?: ProviderEntry
   aliasOwner: string
-  description: string
   fetchUpstream?: () => Promise<UpstreamModel[]>
   emptyHint: string
   presetEfforts?: (modelName: string) => string[]
@@ -185,7 +180,6 @@ function ZoneCard({
 
       {open ? (
         <CardContent className="grid gap-3 border-t px-3 py-3">
-          <p className="text-xs/relaxed text-muted-foreground">{description}</p>
           <ModelZone
             entry={entry}
             aliasOwner={aliasOwner}
@@ -205,4 +199,3 @@ function ZoneCard({
     </Card>
   )
 }
-

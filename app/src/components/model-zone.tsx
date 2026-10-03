@@ -525,7 +525,7 @@ function ModelRow({
         />
         <span className="text-[11px] text-muted-foreground">
           {context !== undefined
-            ? `${formatContextWindow(context)} · the client's auto-compact window on launch`
+            ? formatContextWindow(context)
             : "unset — the client keeps the launcher's default auto-compact window"}
         </span>
       </div>

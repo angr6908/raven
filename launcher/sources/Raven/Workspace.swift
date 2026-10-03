@@ -1,8 +1,8 @@
 import AppKit
 import Foundation
 import Observation
-import SwiftUI
 
+@MainActor
 @Observable
 final class Workspace {
     let store: ProviderStore
@@ -44,6 +44,21 @@ final class Workspace {
         case .pinned: "Pinned"
         case .recents: "Recents"
         case .provider(let id): store.provider(id: id)?.name ?? "Provider"
+        case .overview: "Overview"
+        case .usage: "Usage"
+        case .accounts: "Accounts"
+        case .providersPage: "Models"
+        case .pricing: "Pricing"
+        }
+    }
+
+    var searchPlaceholder: String {
+        switch destination {
+        case .recents: "Filter launches"
+        case .usage: "Filter by model"
+        case .pricing: "Filter models"
+        case .library, .pinned, .provider: "Search models"
+        default: "Search"
         }
     }
 
@@ -57,6 +72,9 @@ final class Workspace {
     }
 
     var subtitle: String {
+        if !destination.isLauncherPage {
+            return ""
+        }
         if case .recents = destination {
             let count = visibleRecents.count
             if isSearching { return count == 1 ? "1 match" : "\(count) matches" }
@@ -93,7 +111,7 @@ final class Workspace {
 
     var sections: [ModelSection] {
         switch destination {
-        case .recents:
+        case .recents, .overview, .usage, .accounts, .providersPage, .pricing:
             return []
         case .pinned:
             return byProvider(store.pinnedItems.filter(matches))
@@ -134,9 +152,9 @@ final class Workspace {
         providerDraft = ProviderDraft(provider)
     }
 
-    func commitProviderDraft() {
-        guard let draft = providerDraft, let provider = store.apply(draft) else { return }
-        providerDraft = nil
+    func commitProviderDraft(_ draft: ProviderDraft) {
+        guard let provider = store.apply(draft) else { return }
+        if providerDraft === draft { providerDraft = nil }
         destination = .provider(provider.id)
     }
 
@@ -165,6 +183,21 @@ final class Workspace {
         }
     }
 
+    func refreshVisible() {
+        switch destination {
+        case .overview, .usage:
+            UsageStore.shared.fetchSnapshot()
+        case .accounts:
+            Task { await AccountsStore.shared.refresh() }
+        case .providersPage:
+            ProvidersPanelStore.shared.reload()
+        case .pricing:
+            PricingStore.shared.refresh()
+        default:
+            refreshActive()
+        }
+    }
+
     func refreshAll() {
         Task { await store.refreshAll() }
     }
@@ -176,10 +209,9 @@ final class Workspace {
                                   advertised: item.entry.contextWindow)
     }
 
-    func commitWindowDraft() {
-        guard let draft = windowDraft else { return }
+    func commitWindowDraft(_ draft: WindowDraft) {
         store.apply(draft)
-        windowDraft = nil
+        if windowDraft === draft { windowDraft = nil }
     }
 
     func setWindow(_ item: ModelItem, tokens: Int?) {

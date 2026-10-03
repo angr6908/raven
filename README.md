@@ -93,19 +93,38 @@ put the `export PATH` line there instead.
 
 ## Launcher
 
-`launcher/` is a native macOS 27 SwiftUI app (Swift 6.4, Observation, Liquid
-Glass) that lists a provider's models and launches Claude Code or Codex against
-one in Terminal. Its config lives in `~/Documents/raven/data/config.json`.
+`launcher/` is a native macOS 27 AppKit app (Swift 6.4, Observation, Liquid
+Glass primitives) that is both launchers and panel in one binary: it launches
+Claude Code or Codex against a chosen model, and ports the whole web panel —
+Overview, Usage, Accounts, Models, Pricing — against the proxy's `/api/...`
+routes. Config stays in `~/Documents/raven/data/config.json` (schema
+unchanged, so `raven.sh` and the web panel keep sharing it).
 
-Two columns. The sidebar is a filter — *All Models*, *Pinned*, *Recents*, then
-one row per provider — over a single searchable list of every model across
-every provider, so there is no "pick a provider first" step. *All Models* and
-*Pinned* group by provider; a single provider groups by `owned_by`. The bottom
-`safeAreaBar` is the whole launch action: selected model, client, folder,
-**Launch** (⌘↩). Per-model settings (pin, context window) live in the row's
-context menu and the Launch menu; there is no details pane.
+Three sidebar groups — *Library* (All Models / Pinned / Recents), *Providers*,
+*Panel* — over a single searchable list of every model across every provider,
+so there is no "pick a provider first" step. *All Models* and *Pinned* group
+by provider; a single provider groups by `owned_by`. The detail side swaps
+child view controllers per destination; the bottom glass bar is the whole
+launch action on launcher pages (selected model, client, folder, **Launch**,
+⌘↩). Per-model settings (pin, context window) live in the row's context menu
+and the Launch menu.
 
-Needs Command Line Tools for Xcode 27 (`softwareupdate --list`), no Xcode.
+Reactivity is `@Observable` stores + `ObservationTracker`
+(`withObservationTracking`, re-registered on the main actor, paused on
+`viewWillDisappear`). Panel state lives in singletons: `UsageStore` (SSE
+`/api/usage/stream`, 3 s reconnect, 15 s health poll), `AccountsStore` (15 s
+poll while the page is visible), `ProvidersPanelStore` and `PricingStore`
+(whole-doc PUT / bare-map POST behind a shared 600 ms `AutoSaveScheduler`);
+saving prices calls `UsageStore.reprice()` since the server reprices at query
+time. First paint comes from `panel-usage-cache.json` /
+`panel-quota-cache.json` in the data dir. ⌘R reloads what you are looking at —
+the active provider, or a fresh GET of the panel page; ⇧⌘R refreshes every
+provider.
+
+Build and test need only Command Line Tools for Xcode 27
+(`softwareupdate --list`); `scripts/make-app.sh` additionally calls
+`/Applications/Xcode.app`'s `actool` to compile `resources/AppIcon.icon`, so
+bundling wants full Xcode.
 
 ```bash
 cd launcher && swift build -c release && scripts/make-app.sh   # → build/Raven.app
@@ -113,20 +132,10 @@ swift test -Xswiftc -plugin-path \
   -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
 ```
 
-The 27.0 SDK declares `@State` as a compiler macro whose plugin ships only
-inside Xcode, so the launcher keeps all view state in `@Observable` objects
-(`ProviderStore` for persisted data, `Workspace` for transient UI) and uses no
-`@State`. The same applies to Swift Testing's `@Test`, hence the explicit
-plugin path above.
-
-Do not add an `.inspector` column: on macOS 27 `.inspector` combined with a
-bottom `safeAreaBar` holding an AppKit-backed control (the segmented `Picker`,
-or adjacent glass buttons) loops AppKit constraint updates and the window
-throws on launch. Without it the same bar is fine.
-
-`Menu` renders its own label — `.font`/`.foregroundStyle`, applied inside or
-outside the label, are both ignored under `.menuStyle(.borderlessButton)`, so
-row values that need styling are plain `Text`.
+The plugin path is for Swift Testing's `@Test` compiler macro. `Package.swift`
+sets `defaultIsolation(MainActor.self)`, so types and `Task {}` bodies are
+main-actor unless marked `nonisolated` — wire types, parsers and format
+helpers are the `nonisolated` ones; every `@Observable` store is `@MainActor`.
 
 `RAVEN_DATA_DIR` overrides `~/Documents/raven/data` (useful for trying the
 first-launch flow against an empty directory).
