@@ -1,27 +1,6 @@
 import SwiftUI
 
-enum Metrics {
-    static let spacing1: CGFloat = 4
-    static let spacing2: CGFloat = 8
-    static let spacing3: CGFloat = 12
-    static let spacing4: CGFloat = 16
-    static let spacing5: CGFloat = 20
-    static let spacing6: CGFloat = 24
-    static let contentMargin: CGFloat = 20
-    static let cardRadius: CGFloat = 16
-    static let controlRadius: CGFloat = 10
-    static let tableRowHeight: CGFloat = 28
-    static let minHitTarget: CGFloat = 28
-    static let maxPanelWidth: CGFloat = 1080
-    static let launchBarHeight: CGFloat = 56
-    static let searchMinWidth: CGFloat = 160
-    static let searchMaxWidth: CGFloat = 260
-    static let sidebarMin: CGFloat = 220
-    static let sidebarIdeal: CGFloat = 250
-    static let sidebarMax: CGFloat = 340
-}
-
-enum RavenFont {
+struct RavenFont {
     static var headline: Font { .system(size: 14, weight: .semibold) }
     static var title: Font { .system(size: 20, weight: .semibold) }
     static var body: Font { .system(size: 13) }
@@ -68,4 +47,26 @@ enum RavenTheme {
         case .loading, .empty: .secondary
         }
     }
+}
+
+enum Metrics {
+    static let spacing1: CGFloat = 4
+    static let spacing2: CGFloat = 8
+    static let spacing3: CGFloat = 12
+    static let spacing4: CGFloat = 16
+    static let spacing5: CGFloat = 20
+    static let spacing6: CGFloat = 24
+    static let contentMargin: CGFloat = 20
+    static let cardRadius: CGFloat = 16
+    static let controlRadius: CGFloat = 10
+    static let tableRowHeight: CGFloat = 28
+    static let minHitTarget: CGFloat = 28
+    static let maxPanelWidth: CGFloat = 1080
+    static let launchBarHeight: CGFloat = 56
+    static let searchMinWidth: CGFloat = 160
+    static let searchMaxWidth: CGFloat = 260
+    static let sidebarMin: CGFloat = 220
+    static let sidebarIdeal: CGFloat = 250
+    static let sidebarMax: CGFloat = 340
+    static let familyIconSize: CGFloat = 26
 }

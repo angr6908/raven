@@ -166,7 +166,6 @@ struct WorkbuddySection: View {
             }
         }
     }
-
     private func workbuddyColumns(_ rows: [AccountView]) -> [DataColumn] {
         [
             DataColumn(title: "Account", width: 200) { row in

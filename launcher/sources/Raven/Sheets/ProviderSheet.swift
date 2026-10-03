@@ -39,7 +39,7 @@ struct ProviderSheet: View {
 
             SectionHeader(title: "Connection")
             HStack(spacing: 8) {
-                connectionStatus
+                ProviderSheetConnectionStatus(state: draft.testState)
                 Spacer()
                 Button("Test") { draft.testConnection() }
                     .buttonStyle(.glass)
@@ -72,11 +72,20 @@ struct ProviderSheet: View {
         .frame(width: 520)
     }
 
-    @ViewBuilder
-    private var connectionStatus: some View {
-        switch draft.testState {
+    private func commit() {
+        guard draft.validated() != nil else { return }
+        workspace.commitProviderDraft(draft)
+        dismiss()
+    }
+}
+
+private struct ProviderSheetConnectionStatus: View {
+    let state: ProviderDraft.TestState
+
+    var body: some View {
+        switch state {
         case .idle:
-            Text("Not tested")
+            Label("Not tested", systemImage: "circle.dashed")
                 .font(.system(size: 12))
                 .foregroundStyle(.secondary)
         case .testing:
@@ -87,22 +96,16 @@ struct ProviderSheet: View {
                     .foregroundStyle(.secondary)
             }
         case .success(let count):
-            Text(count == 1 ? "1 model" : "\(count) models")
+            Label(count == 1 ? "1 model" : "\(count) models", systemImage: "checkmark.circle.fill")
                 .font(.system(size: 12))
                 .foregroundStyle(.green)
         case .failure(let message):
-            Text(message)
+            Label(message, systemImage: "xmark.circle.fill")
                 .font(.system(size: 12))
                 .foregroundStyle(.red)
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .help(message)
         }
-    }
-
-    private func commit() {
-        guard draft.validated() != nil else { return }
-        workspace.commitProviderDraft(draft)
-        dismiss()
     }
 }

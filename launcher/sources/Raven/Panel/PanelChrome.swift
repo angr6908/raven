@@ -126,11 +126,7 @@ struct StatTile: View {
         GlassCard(interactive: true) {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
-                    Image(systemName: icon)
-                        .imageScale(.small)
-                        .foregroundStyle(tint)
-                        .frame(width: 18, height: 18)
-                        .background(tint.opacity(0.14), in: Circle())
+                    TintedIcon(symbol: icon, tint: tint, size: 24, cornerRadius: 6)
                     Text(label)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
@@ -195,11 +191,7 @@ struct PanelPageHeader: View {
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(.system(size: 17, weight: .medium))
-                .foregroundStyle(.white)
-                .frame(width: 34, height: 34)
-                .background(Color.accentColor.gradient, in: .rect(cornerRadius: 9))
+            TintedIcon(symbol: icon, tint: .accentColor, size: 34, cornerRadius: 9)
                 .help(title)
             VStack(alignment: .leading, spacing: 1) {
                 Text(title)
@@ -221,6 +213,12 @@ struct PanelSection<Content: View>: View {
     var title: String
     var trailing: AnyView?
     @ViewBuilder var content: Content
+
+    init(title: String, trailing: AnyView? = nil, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.trailing = trailing
+        self.content = content()
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {

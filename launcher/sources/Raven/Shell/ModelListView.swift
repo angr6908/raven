@@ -138,30 +138,36 @@ struct ModelRowView: View {
     @Bindable private var hover = RowHover()
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: item.entry.family.symbol)
-                .foregroundStyle(RavenTheme.familyTint(item.entry.family))
-                .frame(width: 18)
+        HStack(spacing: 10) {
+            TintedIcon(symbol: item.entry.family.symbol,
+                       tint: RavenTheme.familyTint(item.entry.family),
+                       size: Metrics.familyIconSize)
 
-            Text(item.entry.modelID)
-                .font(RavenFont.mono(13))
-                .lineLimit(1)
-                .truncationMode(.middle)
-                .foregroundStyle(.primary)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(item.entry.modelID)
+                    .font(RavenFont.mono(13))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .foregroundStyle(.primary)
+                Text(item.provider.name)
+                    .font(RavenFont.caption)
+                    .foregroundStyle(.tertiary)
+                    .lineLimit(1)
+            }
 
             Spacer(minLength: 8)
 
             if store.isPinned(item) {
                 Image(systemName: "pin.fill")
                     .imageScale(.small)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.orange)
                     .help("Pinned")
             }
 
             ModelWindowBadge(badge: store.windowBadge(for: item))
         }
         .padding(.horizontal, Metrics.spacing4)
-        .padding(.vertical, 5)
+        .padding(.vertical, 6)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(rowBackground)
         .contentShape(Rectangle())
@@ -187,9 +193,9 @@ struct ModelRowView: View {
     @ViewBuilder
     private var rowBackground: some View {
         if store.selection == item.ref {
-            Color.accentColor.opacity(0.18)
+            Color.accentColor.opacity(0.16)
         } else if hover.isHovering {
-            Color.primary.opacity(0.06)
+            Color.primary.opacity(0.05)
         } else {
             Color.clear
         }

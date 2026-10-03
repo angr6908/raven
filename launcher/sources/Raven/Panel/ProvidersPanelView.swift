@@ -23,15 +23,18 @@ struct ProvidersPanelView: View {
             store.start()
         }
         .onChange(of: (store.providers ?? []).count) { _, _ in syncUI() }
-        .alert("Remove provider?", isPresented: removalBinding, presenting: ui.pendingRemoval) { index in
+        .alert("Remove provider?", item: removalBinding) { index in
             Button("Remove \(name(at: index))", role: .destructive) {
                 store.removeProvider(index: index)
-                ui.pendingRemoval = nil
             }
-            Button("Cancel", role: .cancel) { ui.pendingRemoval = nil }
+            Button("Cancel", role: .cancel) {}
         } message: { _ in
             Text("Its models and API keys are dropped from the routing doc on save.")
         }
+    }
+
+    private var removalBinding: Binding<Int?> {
+        Binding(get: { ui.pendingRemoval }, set: { ui.pendingRemoval = $0 })
     }
 
     private var routingSummary: String? {
@@ -39,10 +42,6 @@ struct ProvidersPanelView: View {
         let pinned = providers.reduce(0) { $0 + $1.models.count }
         let active = providers.filter { $0.disabled != true }.count
         return "\(providers.count) provider\(providers.count == 1 ? "" : "s") · \(active) active · \(pinned) model\(pinned == 1 ? "" : "s") pinned"
-    }
-
-    private var removalBinding: Binding<Bool> {
-        Binding(get: { ui.pendingRemoval != nil }, set: { if !$0 { ui.pendingRemoval = nil } })
     }
 
     private func name(at index: Int) -> String {

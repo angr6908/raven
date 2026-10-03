@@ -29,9 +29,10 @@ struct LaunchTarget: View {
 
     var body: some View {
         if let item = store.selectedItem {
-            HStack(spacing: 8) {
-                Image(systemName: item.entry.family.symbol)
-                    .foregroundStyle(RavenTheme.familyTint(item.entry.family))
+            HStack(spacing: 10) {
+                TintedIcon(symbol: item.entry.family.symbol,
+                           tint: RavenTheme.familyTint(item.entry.family),
+                           size: 30, cornerRadius: 8)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(item.entry.modelID)
                         .font(RavenFont.mono(13))

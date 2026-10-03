@@ -6,6 +6,16 @@ private let overviewPageState = OverviewPageState()
 final class OverviewPageState {
     var renderedOnce = false
     var chart = ChartState()
+    var totals = UsageTotals()
+    var points: [UsagePoint] = []
+    private var aggregatedRevision = -1
+
+    func update(records: [UsageRecord], revision: Int) {
+        guard revision != aggregatedRevision else { return }
+        aggregatedRevision = revision
+        totals = PanelAggregation.totals(records)
+        points = PanelAggregation.hourly(records)
+    }
 }
 
 struct OverviewView: View {
@@ -22,23 +32,22 @@ struct OverviewView: View {
             PanelNotice(message: store.error)
 
             if store.records.isEmpty {
-                if !page.renderedOnce && store.error == nil {
-                    RavenLoader(message: "Loading usage…")
-                        .frame(height: 320)
-                } else {
-                    EmptyState(symbol: "chart.xyaxis.line",
-                               title: "No usage recorded yet",
-                               message: "Requests proxied through Raven will appear here.")
-                        .frame(height: 320)
-                }
+                OverviewEmpty(renderedOnce: page.renderedOnce)
+                    .onAppear { page.renderedOnce = page.renderedOnce || !store.records.isEmpty }
+                    .onChange(of: store.records.count) { _, count in
+                        if count > 0 { page.renderedOnce = true }
+                    }
             } else {
-                stats
-                tokenCard
+                OverviewStats(totals: page.totals)
+                OverviewTokenChart(points: page.points, state: page.chart)
                 HStack(alignment: .top, spacing: Metrics.spacing4) {
-                    costCard
-                    requestCard
+                    OverviewCostChart(points: page.points, state: page.chart)
+                    OverviewRequestChart(points: page.points, state: page.chart)
                 }
             }
+        }
+        .task(id: store.revision) {
+            page.update(records: store.records, revision: store.revision)
         }
         .onAppear {
             page.renderedOnce = page.renderedOnce || !store.records.isEmpty
@@ -48,63 +57,94 @@ struct OverviewView: View {
             if count > 0 { page.renderedOnce = true }
         }
     }
+}
 
-    private var totals: UsageTotals { PanelAggregation.totals(store.records) }
-    private var points: [UsagePoint] { PanelAggregation.hourly(store.records) }
+private struct OverviewEmpty: View {
+    var renderedOnce: Bool
 
-    private var stats: some View {
-        let t = totals
-        return LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
-                         spacing: 12) {
+    var body: some View {
+        if !renderedOnce {
+            RavenLoader(message: "Loading usage…")
+                .frame(height: 320)
+        } else {
+            EmptyState(symbol: "chart.xyaxis.line",
+                       title: "No usage recorded yet",
+                       message: "Requests proxied through Raven will appear here.")
+                .frame(height: 320)
+        }
+    }
+}
+
+private struct OverviewStats: View {
+    let totals: UsageTotals
+
+    var body: some View {
+        LazyVGrid(columns: [GridItem(.flexible(), spacing: 12), GridItem(.flexible(), spacing: 12)],
+                  spacing: 12) {
             StatTile(icon: "chart.bar.fill",
                      label: "Total tokens",
-                     value: PanelFormats.formatTokens(t.total),
-                     sub: "\(PanelFormats.formatTokens(t.input)) in · \(PanelFormats.formatTokens(t.output)) out",
+                     value: PanelFormats.formatTokens(totals.total),
+                     sub: "\(PanelFormats.formatTokens(totals.input)) in · \(PanelFormats.formatTokens(totals.output)) out",
                      badge: nil,
                      tint: .blue)
             StatTile(icon: "bolt.fill",
                      label: "Requests",
-                     value: String(t.requests),
-                     sub: "\(t.usedModels) model\(t.usedModels == 1 ? "" : "s") used",
+                     value: String(totals.requests),
+                     sub: "\(totals.usedModels) model\(totals.usedModels == 1 ? "" : "s") used",
                      badge: nil,
                      tint: .orange)
             StatTile(icon: "dollarsign.circle.fill",
                      label: "Est. cost",
-                     value: PanelFormats.formatCost(t.cost),
+                     value: PanelFormats.formatCost(totals.cost),
                      sub: nil,
-                     badge: "\(PanelFormats.formatPercent(t.cacheRate)) cache hit rate",
+                     badge: "\(PanelFormats.formatPercent(totals.cacheRate)) cache hit rate",
                      tint: .green)
             StatTile(icon: "gauge.with.dots.needle.67percent",
                      label: "Duration",
-                     value: PanelFormats.formatDuration(t.avgLatency),
-                     sub: "avg TTFT \(PanelFormats.formatDuration(t.avgTTFT))",
+                     value: PanelFormats.formatDuration(totals.avgLatency),
+                     sub: "avg TTFT \(PanelFormats.formatDuration(totals.avgTTFT))",
                      badge: nil,
                      tint: .purple)
         }
     }
+}
 
-    private var tokenCard: some View {
+private struct OverviewTokenChart: View {
+    let points: [UsagePoint]
+    let state: ChartState
+
+    var body: some View {
         ChartCard(title: "Token usage",
                   subtitle: "Input vs output tokens per hour",
                   legend: [(ChartPalette.output, "Output"), (ChartPalette.input, "Input")],
                   chartHeight: 256) {
-            HourlyChart(points: points, kind: .tokens, state: page.chart)
+            HourlyChart(points: points, kind: .tokens, state: state)
         }
     }
+}
 
-    private var costCard: some View {
+private struct OverviewCostChart: View {
+    let points: [UsagePoint]
+    let state: ChartState
+
+    var body: some View {
         ChartCard(title: "Cost over time",
                   subtitle: "Estimated spend per hour (USD)",
                   chartHeight: 208) {
-            HourlyChart(points: points, kind: .cost, state: page.chart)
+            HourlyChart(points: points, kind: .cost, state: state)
         }
     }
+}
 
-    private var requestCard: some View {
+private struct OverviewRequestChart: View {
+    let points: [UsagePoint]
+    let state: ChartState
+
+    var body: some View {
         ChartCard(title: "Requests per hour",
                   subtitle: "Successful + failed calls",
                   chartHeight: 208) {
-            HourlyChart(points: points, kind: .requests, state: page.chart)
+            HourlyChart(points: points, kind: .requests, state: state)
         }
     }
 }

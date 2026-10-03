@@ -100,18 +100,18 @@ struct RecentRowContent: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            Image(systemName: recent.client.symbol)
-                .foregroundStyle(provider.map(RavenTheme.providerAccent) ?? .secondary)
-                .frame(width: 20)
+            TintedIcon(symbol: recent.client.symbol,
+                       tint: provider.map(RavenTheme.providerAccent) ?? .secondary,
+                       size: Metrics.familyIconSize)
 
-            VStack(alignment: .leading, spacing: 1) {
+            VStack(alignment: .leading, spacing: 2) {
                 Text(recent.modelID)
                     .font(RavenFont.mono(13))
                     .lineLimit(1)
                     .truncationMode(.middle)
                 Text("\(provider?.name ?? "Removed provider") · \(recent.client.displayName) · \(recent.folderName)")
                     .font(RavenFont.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                     .lineLimit(1)
             }
 

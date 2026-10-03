@@ -14,6 +14,31 @@ struct Pill: View {
     }
 }
 
+struct TintedIcon: View {
+    var symbol: String
+    var tint: Color
+    var size: CGFloat = 26
+    var cornerRadius: CGFloat = 7
+
+    var body: some View {
+        Image(systemName: symbol)
+            .font(.system(size: size * 0.44, weight: .medium))
+            .foregroundStyle(tint)
+            .frame(width: size, height: size)
+            .background(tint.opacity(0.15), in: .rect(cornerRadius: cornerRadius))
+    }
+}
+
+struct StatusDot: View {
+    var tint: Color
+
+    var body: some View {
+        Circle()
+            .fill(tint)
+            .frame(width: 7, height: 7)
+    }
+}
+
 struct SectionHeader: View {
     var title: String
 
@@ -77,24 +102,25 @@ struct RavenLoader: View {
     }
 }
 
-struct EmptyState: View {
+struct EmptyState<Actions: View>: View {
     var symbol: String
     var title: String
     var message: String?
-    var actions: AnyView?
+    var actions: Actions
 
-    init(symbol: String, title: String, message: String? = nil) {
+    init(symbol: String, title: String, message: String? = nil) where Actions == EmptyView {
         self.symbol = symbol
         self.title = title
         self.message = message
-        self.actions = nil
+        self.actions = EmptyView()
     }
 
-    init<A: View>(symbol: String, title: String, message: String? = nil, @ViewBuilder actions: () -> A) {
+    init(symbol: String, title: String, message: String? = nil,
+         @ViewBuilder actions: () -> Actions) {
         self.symbol = symbol
         self.title = title
         self.message = message
-        self.actions = AnyView(actions())
+        self.actions = actions()
     }
 
     var body: some View {
@@ -105,9 +131,7 @@ struct EmptyState: View {
                 Text(message)
             }
         } actions: {
-            if let actions {
-                actions
-            }
+            actions
         }
     }
 }

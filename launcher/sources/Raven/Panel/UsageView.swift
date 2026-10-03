@@ -10,6 +10,9 @@ final class UsagePageState {
     var isClearing = false
     var providerIndex: PanelLogic.ProviderModelIndex = [:]
     private var signature = "\u{0}"
+    private var modelAggs: [UsageModelAgg] = []
+    private var totals = UsageTotals()
+    private var aggregatedRevision = -1
 
     func refreshProviderIndex() {
         let panel = ProvidersPanelStore.shared
@@ -24,6 +27,16 @@ final class UsagePageState {
         signature = next
         providerIndex = PanelLogic.buildProviderModelIndex(providers)
     }
+
+    func update(records: [UsageRecord], revision: Int) {
+        guard revision != aggregatedRevision else { return }
+        aggregatedRevision = revision
+        modelAggs = PanelAggregation.byModel(records)
+        totals = PanelAggregation.totals(records)
+    }
+
+    var modelAggregates: [UsageModelAgg] { modelAggs }
+    var usageTotals: UsageTotals { totals }
 
     func shortModel(_ key: String) -> String {
         PanelLogic.resolveModelDisplay(key, providerIndex).short
@@ -43,16 +56,16 @@ struct UsageView: View {
             PanelPageHeader(title: "Usage",
                             subtitle: store.records.isEmpty
                                 ? nil
-                                : "\(store.records.count) requests · \(PanelAggregation.byModel(store.records).count) models",
+                                : "\(store.records.count) requests · \(page.modelAggregates.count) models",
                             icon: "list.bullet.rectangle")
             PanelNotice(message: store.error ?? page.notice)
 
             PanelSection(title: "Usage by model") {
-                modelTable
+                UsageModelTable(store: store, page: page)
             }
 
-            PanelSection(title: "Request log", trailing: requestControls) {
-                requestTable
+            PanelSection(title: "Request log", trailing: AnyView(UsageRequestControls(store: store, page: page))) {
+                UsageRequestTable(store: store, page: page)
             }
         }
         .onAppear {
@@ -60,9 +73,14 @@ struct UsageView: View {
             store.start()
         }
     }
+}
 
-    private var requestControls: AnyView {
-        AnyView(HStack(spacing: 8) {
+private struct UsageRequestControls: View {
+    let store: UsageStore
+    @Bindable var page: UsagePageState
+
+    var body: some View {
+        HStack(spacing: 8) {
             TextField("Filter by model…", text: $page.requestTable.query)
                 .textFieldStyle(.roundedBorder)
                 .controlSize(.small)
@@ -71,7 +89,7 @@ struct UsageView: View {
                 .controlSize(.small)
                 .foregroundStyle(.red)
                 .disabled(store.records.isEmpty || page.isClearing)
-        })
+        }
     }
 
     private func clearLog() {
@@ -83,21 +101,23 @@ struct UsageView: View {
             page.isClearing = false
         }
     }
+}
 
-    private var modelAggs: [UsageModelAgg] {
-        PanelAggregation.byModel(store.records)
-    }
+private struct UsageModelTable: View {
+    let store: UsageStore
+    @Bindable var page: UsagePageState
 
-    private var modelTable: some View {
-        let aggs = modelAggs
-        return DataTable(columns: modelColumns(aggs), rowCount: aggs.count, state: page.modelTable,
-                         footerCell: { column in modelFooterCell(aggs.count, column) },
+    var body: some View {
+        page.update(records: store.records, revision: store.revision)
+        return DataTable(columns: modelColumns, rowCount: page.modelAggregates.count, state: page.modelTable,
+                         footerCell: footerCell,
                          pagination: true, hidePaginationOnSinglePage: true, maxHeight: 300,
                          filter: nil, rowMenu: nil)
     }
 
-    private func modelColumns(_ aggs: [UsageModelAgg]) -> [DataColumn] {
-        [
+    private var modelColumns: [DataColumn] {
+        let aggs = page.modelAggregates
+        return [
             DataColumn(title: "Model", width: 180,
                        compare: columnByText { aggs[$0].model }) { row in
                 AnyView(Text(page.shortModel(aggs[row].model))
@@ -173,9 +193,9 @@ struct UsageView: View {
         ]
     }
 
-    private func modelFooterCell(_ count: Int, _ column: Int) -> AnyView {
-        guard count > 0 else { return AnyView(EmptyView()) }
-        let totals = PanelAggregation.totals(store.records)
+    private func footerCell(_ column: Int) -> AnyView {
+        guard page.modelAggregates.count > 0 else { return AnyView(EmptyView()) }
+        let totals = page.usageTotals
         let ok = totals.latCount
         switch column {
         case 0:
@@ -204,8 +224,13 @@ struct UsageView: View {
             return AnyView(EmptyView())
         }
     }
+}
 
-    private var requestTable: some View {
+private struct UsageRequestTable: View {
+    let store: UsageStore
+    @Bindable var page: UsagePageState
+
+    var body: some View {
         let records = store.records
         return DataTable(columns: requestColumns(records), rowCount: records.count, state: page.requestTable,
                          pagination: true, minHeight: 400, maxHeight: 640,

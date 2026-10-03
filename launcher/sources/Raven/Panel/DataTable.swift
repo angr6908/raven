@@ -271,7 +271,8 @@ struct DataTable: View {
             .controlSize(.small)
             .disabled(currentPage == 0)
             .help("Previous page")
-            ForEach(Array(pageItems(pages: pages, currentPage: currentPage).enumerated()), id: \.offset) { _, item in
+            ForEach(pageItems(pages: pages, currentPage: currentPage).indices, id: \.self) { index in
+                let item = pageItems(pages: pages, currentPage: currentPage)[index]
                 if let number = item {
                     Button("\(number)") {
                         state.page = number - 1
