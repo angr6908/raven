@@ -110,16 +110,6 @@ final class UsageStore {
         fetchSnapshot(reprice: true)
     }
 
-    func snapshotNow() async {
-        do {
-            let response: UsageListResponse = try await PanelClient.shared.get("/api/usage")
-            apply(response.data, reprice: false)
-            error = nil
-            stream.resetDrops()
-        } catch {
-            self.error = (error as? PanelError)?.noticeText ?? error.localizedDescription
-        }
-    }
 
     func clear() async -> String? {
         do {

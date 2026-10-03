@@ -121,34 +121,9 @@ final class ProvidersPanelStore {
         }
     }
 
-    func updateModel(zoneIndex: Int, modelIndex: Int, _ change: @escaping (ProviderModelDef) -> ProviderModelDef) {
-        mutate { list in
-            guard zoneIndex < list.count, modelIndex < list[zoneIndex].models.count else { return }
-            var entry = list[zoneIndex]
-            var models = entry.models
-            models[modelIndex] = change(models[modelIndex])
-            entry.models = models
-            list[zoneIndex] = PanelLogic.smartDefault(old: list[zoneIndex], next: entry)
-        }
-    }
 
-    func setModelField(zoneIndex: Int, modelIndex: Int, _ mutateModel: (inout ProviderModelDef) -> Void) {
-        guard var list = providers, zoneIndex < list.count, modelIndex < list[zoneIndex].models.count else { return }
-        var model = list[zoneIndex].models[modelIndex]
-        mutateModel(&model)
-        list[zoneIndex].models[modelIndex] = model
-        providers = list
-    }
 
-    func applyModel(zoneIndex: Int, _ change: @escaping (ProviderEntry) -> ProviderEntry) {
-        updateProvider(index: zoneIndex) { change($0) }
-    }
 
-    func commitLocal(_ change: (inout [ProviderEntry]) -> Void) {
-        guard var list = providers else { return }
-        change(&list)
-        providers = list
-    }
 
     func updateAntigravityLevels(from models: [UpstreamCatalogModel]) {
         var levels: [String: [String]] = [:]
@@ -177,7 +152,4 @@ final class ProvidersPanelStore {
                                                 query: [URLQueryItem(name: "model", value: name)])
     }
 
-    func zoneIndices(matching: (ProviderEntry) -> Bool) -> Int? {
-        providers?.firstIndex(where: matching)
-    }
 }

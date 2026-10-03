@@ -93,49 +93,47 @@ put the `export PATH` line there instead.
 
 ## Launcher
 
-`launcher/` is a native macOS 27 AppKit app (Swift 6.4, Observation, Liquid
-Glass primitives) that is both launchers and panel in one binary: it launches
-Claude Code or Codex against a chosen model, and ports the whole web panel —
-Overview, Usage, Accounts, Models, Pricing — against the proxy's `/api/...`
-routes. Config stays in `~/Documents/raven/data/config.json` (schema
-unchanged, so `raven.sh` and the web panel keep sharing it).
+`launcher/` is a native macOS 27 SwiftUI app (Swift 6.4, Observation, Liquid
+Glass) that is both launcher and panel in one binary: it launches Claude Code
+or Codex against a chosen model, and covers the whole web panel against the
+proxy's `/api/...` routes. Config stays in `~/Documents/raven/data/config.json`
+(schema unchanged, so `raven.sh` and the web panel keep sharing it).
 
-Three sidebar groups — *Library* (All Models / Pinned / Recents), *Providers*,
-*Panel* — over a single searchable list of every model across every provider,
-so there is no "pick a provider first" step. *All Models* and *Pinned* group
-by provider; a single provider groups by `owned_by`. The detail side swaps
-child view controllers per destination; the bottom glass bar is the whole
-launch action on launcher pages (selected model, client, folder, **Launch**,
-⌘↩). Per-model settings (pin, context window) live in the row's context menu
-and the Launch menu.
+Layout is sidebar / content, with no side panels. The sidebar has *Launch* (Models,
+Pinned, Recents), *Providers* and *Proxy* (Overview, Usage, Accounts, Routing,
+Pricing). On launch pages the client switch (Claude Code | Codex) lives in the toolbar, and a glass
+bar at the bottom is the launch composer: selected model, pin, folder, context
+window and **Launch** (⌘↩). ⌘K opens Quick Launch, a fuzzy model search that launches on Return.
+Usage and Pricing use native sortable `Table`s (request details open on double-click); Overview
+charts share Swift Charts selection; Routing is a master-detail editor for
+managed channels and API providers.
 
-Reactivity is `@Observable` stores + `ObservationTracker`
-(`withObservationTracking`, re-registered on the main actor, paused on
-`viewWillDisappear`). Panel state lives in singletons: `UsageStore` (SSE
-`/api/usage/stream`, 3 s reconnect, 15 s health poll), `AccountsStore` (15 s
-poll while the page is visible), `ProvidersPanelStore` and `PricingStore`
-(whole-doc PUT / bare-map POST behind a shared 600 ms `AutoSaveScheduler`);
-saving prices calls `UsageStore.reprice()` since the server reprices at query
-time. First paint comes from `panel-usage-cache.json` /
-`panel-quota-cache.json` in the data dir. ⌘R reloads what you are looking at —
-the active provider, or a fresh GET of the panel page; ⇧⌘R refreshes every
-provider.
+Code layout under `sources/Raven`: `App` (scene, `AppModel` navigation and
+launch state, commands), `DesignSystem`, `Shell`, `Launch`, `Dashboard`,
+`Settings`; the wire, store and aggregation layers sit at the top level and are
+covered by the tests. Panel stores (`UsageStore`, `AccountsStore`,
+`ProvidersPanelStore`, `PricingStore`) are `@Observable` singletons; usage
+streams over SSE `/api/usage/stream`, and first paint comes from
+`panel-usage-cache.json` / `panel-quota-cache.json` in the data dir.
 
-Build and test need only Command Line Tools for Xcode 27
-(`softwareupdate --list`); `scripts/make-app.sh` additionally calls
-`/Applications/Xcode.app`'s `actool` to compile `resources/AppIcon.icon`, so
-bundling wants full Xcode.
+Type is system-only: SF Pro text styles (body 13, callout 12, subheadline 11 as
+the smallest size), SF Mono for model ids and keys, tabular digits for numbers.
+Roles live in `DesignSystem/Tokens.swift`; views use those or system styles,
+never raw point sizes.
+
+`@State` is a macro in SDK 27, so building needs the SwiftUI macro plugin that
+ships only with full Xcode (`/Applications/Xcode.app`); point `DEVELOPER_DIR`
+at it.
 
 ```bash
-cd launcher && swift build -c release && scripts/make-app.sh   # → build/Raven.app
-swift test -Xswiftc -plugin-path \
-  -Xswiftc /Library/Developer/CommandLineTools/usr/lib/swift/host/plugins/testing
+export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
+cd launcher && swift build -c release && scripts/make-app.sh   # -> build/Raven.app
+swift test
 ```
 
-The plugin path is for Swift Testing's `@Test` compiler macro. `Package.swift`
-sets `defaultIsolation(MainActor.self)`, so types and `Task {}` bodies are
-main-actor unless marked `nonisolated` — wire types, parsers and format
-helpers are the `nonisolated` ones; every `@Observable` store is `@MainActor`.
+`Package.swift` sets `defaultIsolation(MainActor.self)`, so types and `Task {}`
+bodies are main-actor unless marked `nonisolated` - wire types, parsers, format
+helpers and sortable table row types are the `nonisolated` ones.
 
 `RAVEN_DATA_DIR` overrides `~/Documents/raven/data` (useful for trying the
 first-launch flow against an empty directory).

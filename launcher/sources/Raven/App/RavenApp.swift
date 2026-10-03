@@ -3,24 +3,24 @@ import SwiftUI
 @main
 struct RavenApp: App {
     @NSApplicationDelegateAdaptor(RavenLifecycle.self) private var lifecycle
-    private let runtime = RavenRuntime.shared
+    @State private var model = AppModel(store: .shared)
 
     var body: some Scene {
         Window("Raven", id: "main") {
-            RootView(store: runtime.store, workspace: runtime.workspace, shell: runtime.shell)
-                .environment(runtime.store)
-                .environment(runtime.workspace)
+            RootView()
+                .environment(model)
+                .environment(model.store)
                 .onAppear { UsageStore.shared.start() }
         }
-        .defaultSize(width: 1020, height: 660)
+        .defaultSize(width: 1180, height: 740)
         .windowResizability(.contentMinSize)
         .windowToolbarStyle(.unified)
-        .commands {
-            RavenCommands(store: runtime.store, workspace: runtime.workspace, shell: runtime.shell)
-        }
+        .commands { RavenCommands(model: model) }
 
         Settings {
-            SettingsView(store: runtime.store, workspace: runtime.workspace)
+            SettingsView()
+                .environment(model)
+                .environment(model.store)
         }
     }
 }

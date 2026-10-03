@@ -1,108 +1,71 @@
 import SwiftUI
 
 struct RootView: View {
-    let store: ProviderStore
-    let workspace: Workspace
-    @Bindable var shell: ShellState
+    @Environment(AppModel.self) private var app
+    @Environment(ProviderStore.self) private var store
+    @State private var columns: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView(columnVisibility: $shell.columnVisibility) {
-            SidebarView(store: store, workspace: workspace)
+        @Bindable var app = app
+        NavigationSplitView(columnVisibility: $columns) {
+            SidebarView()
+                .navigationSplitViewColumnWidth(min: Layout.sidebarMin, ideal: Layout.sidebarIdeal,
+                                                max: Layout.sidebarMax)
         } detail: {
-            DetailView(store: store, workspace: workspace)
-                .navigationTitle(windowTitle)
-                .navigationSubtitle(windowSubtitle)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if workspace.destination.isLauncherPage && !store.providers.isEmpty {
-                        LaunchBar(store: store, workspace: workspace)
-                    }
-                }
+            DetailRouter()
         }
-        .searchable(text: searchBinding, placement: .toolbar, prompt: Text(workspace.searchPlaceholder))
-        .toolbar { RavenToolbar(store: store, workspace: workspace) }
-        .sheet(item: sheetBinding) { request in
-            sheetContent(request)
+        .frame(minWidth: 1000, minHeight: 560)
+        .sheet(item: $app.sheet) { sheet in
+            SheetHost(sheet: sheet)
         }
-        .alert("Remove this provider?", item: removalBinding) { provider in
-            Button("Remove \(provider.name)", role: .destructive) {
-                workspace.removePendingProvider()
-            }
+        .alert("Remove this provider?", item: $app.removal) { provider in
+            Button("Remove \(provider.name)", role: .destructive) { app.removePending() }
             Button("Cancel", role: .cancel) {}
         } message: { provider in
             Text("Raven forgets \(provider.name)'s base URL and API key, along with its pins and context window overrides.")
         }
-        .alert("Couldn't launch", item: launchErrorBinding) { _ in
+        .alert("Couldn't launch", item: $app.launchError) { _ in
             Button("OK", role: .cancel) {}
         } message: { message in
             Text(message)
         }
-        .fileImporter(isPresented: workdirBinding,
-                      allowedContentTypes: [.folder]) { result in
-            if case .success(let url) = result {
-                store.workdir = url
+        .fileImporter(isPresented: $app.isChoosingFolder, allowedContentTypes: [.folder]) { result in
+            if case .success(let url) = result { app.setWorkdir(url) }
+        }
+    }
+}
+
+private struct DetailRouter: View {
+    @Environment(AppModel.self) private var app
+    @Environment(ProviderStore.self) private var store
+
+    var body: some View {
+        if app.page.isLaunch && store.providers.isEmpty {
+            WelcomeView()
+                .navigationTitle("Raven")
+        } else {
+            switch app.page {
+            case .models, .pinned, .provider: ModelsPage()
+            case .recents: RecentsPage()
+            case .overview: OverviewPage()
+            case .usage: UsagePage()
+            case .accounts: AccountsPage()
+            case .routing: RoutingPage()
+            case .pricing: PricingPage()
             }
         }
-        .frame(minWidth: 760, minHeight: 520)
     }
+}
 
-    private var windowTitle: String {
-        if store.providers.isEmpty && workspace.destination.isLauncherPage { return "Raven" }
-        return workspace.title
-    }
+private struct SheetHost: View {
+    let sheet: Sheet
 
-    private var windowSubtitle: String {
-        if store.providers.isEmpty && workspace.destination.isLauncherPage { return "" }
-        return workspace.subtitle
-    }
-
-    private var searchBinding: Binding<String> {
-        Binding(get: { workspace.search }, set: { workspace.search = $0 })
-    }
-
-    private var workdirBinding: Binding<Bool> {
-        Binding(
-            get: { workspace.isChoosingWorkdir },
-            set: { workspace.isChoosingWorkdir = $0 })
-    }
-
-    private var sheetBinding: Binding<SheetRequest?> {
-        Binding(
-            get: {
-                if let draft = workspace.providerDraft { return .provider(draft) }
-                if let draft = workspace.windowDraft { return .contextWindow(draft) }
-                if workspace.isShowingScript { return .script }
-                return nil
-            },
-            set: { newValue in
-                if newValue == nil {
-                    workspace.providerDraft = nil
-                    workspace.windowDraft = nil
-                    workspace.isShowingScript = false
-                }
-            })
-    }
-
-    private var removalBinding: Binding<Provider?> {
-        Binding(
-            get: { workspace.pendingRemoval },
-            set: { workspace.pendingRemoval = $0 })
-    }
-
-    private var launchErrorBinding: Binding<String?> {
-        Binding(
-            get: { workspace.launchError },
-            set: { workspace.launchError = $0 })
-    }
-
-    @ViewBuilder
-    private func sheetContent(_ request: SheetRequest) -> some View {
-        switch request {
-        case .provider(let draft):
-            ProviderSheet(draft: draft, workspace: workspace)
-        case .contextWindow(let draft):
-            ContextWindowSheet(draft: draft, workspace: workspace)
-        case .script:
-            LaunchScriptSheet(store: store, workspace: workspace)
+    var body: some View {
+        switch sheet {
+        case .provider(let draft): ProviderSheet(draft: draft)
+        case .script: ScriptSheet()
+        case .quickLaunch: QuickLaunchSheet()
+        case .addAccount(let kind): AddAccountSheet(kind: kind)
         }
     }
 }

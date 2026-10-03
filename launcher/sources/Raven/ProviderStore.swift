@@ -39,9 +39,9 @@ nonisolated extension RavenConfig {
 final class ProviderStore {
     static let shared = ProviderStore()
 
-    static var configDirectoryOverride: URL?
+    nonisolated(unsafe) static var configDirectoryOverride: URL?
 
-    static var configDirectory: URL {
+    nonisolated static var configDirectory: URL {
         if let override = configDirectoryOverride { return override }
         if let path = ProcessInfo.processInfo.environment["RAVEN_DATA_DIR"], !path.isEmpty {
             return URL(filePath: path, directoryHint: .isDirectory)
@@ -52,11 +52,11 @@ final class ProviderStore {
             .appending(path: "data", directoryHint: .isDirectory)
     }
 
-    static var configFile: URL { configDirectory.appending(path: "config.json") }
+    nonisolated static var configFile: URL { configDirectory.appending(path: "config.json") }
 
     static let recentsLimit = 12
 
-    static func ensureConfigDirectory() throws {
+    nonisolated static func ensureConfigDirectory() throws {
         try FileManager.default.createDirectory(
             at: configDirectory,
             withIntermediateDirectories: true,
@@ -90,6 +90,8 @@ final class ProviderStore {
     }
 
     @ObservationIgnored private var isLoaded = false
+    @ObservationIgnored private var hasUnsavedChanges = false
+    @ObservationIgnored private var saveTask: Task<Void, Never>?
 
     private init() {
         load()
@@ -127,23 +129,50 @@ final class ProviderStore {
 
     private func persist() {
         guard isLoaded else { return }
+        hasUnsavedChanges = true
+        saveTask?.cancel()
+        saveTask = Task { [weak self] in
+            try? await Task.sleep(for: .milliseconds(250))
+            guard !Task.isCancelled, let self else { return }
+            await self.saveInBackground()
+        }
+    }
+
+    func flush() {
+        saveTask?.cancel()
+        guard hasUnsavedChanges else { return }
+        hasUnsavedChanges = false
+        Self.write(snapshot())
+    }
+
+    private func saveInBackground() async {
+        guard hasUnsavedChanges else { return }
+        hasUnsavedChanges = false
+        let config = snapshot()
+        await Task.detached(priority: .utility) { Self.write(config) }.value
+    }
+
+    private func snapshot() -> RavenConfig {
+        RavenConfig(
+            providers: providers,
+            windowOverrides: windowOverrides,
+            selectedProviderID: selection?.providerID,
+            selectedModelID: selection?.modelID,
+            selectedClient: client,
+            workdir: workdir.path(percentEncoded: false),
+            pinned: pinned,
+            recents: recents,
+            recentWorkdirs: recentWorkdirPaths,
+            transient: TransientSettings(client: client, workdir: workdirPath)
+        )
+    }
+
+    private nonisolated static func write(_ config: RavenConfig) {
         do {
-            try Self.ensureConfigDirectory()
-            let config = RavenConfig(
-                providers: providers,
-                windowOverrides: windowOverrides,
-                selectedProviderID: selection?.providerID,
-                selectedModelID: selection?.modelID,
-                selectedClient: client,
-                workdir: workdir.path(percentEncoded: false),
-                pinned: pinned,
-                recents: recents,
-                recentWorkdirs: recentWorkdirPaths,
-                transient: TransientSettings(client: client, workdir: workdirPath)
-            )
+            try ensureConfigDirectory()
             let encoder = JSONEncoder()
             encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
-            try encoder.encode(config).write(to: Self.configFile, options: .atomic)
+            try encoder.encode(config).write(to: configFile, options: .atomic)
         } catch {
             NSLog("raven: could not save config: \(error.localizedDescription)")
         }
@@ -379,10 +408,11 @@ final class ProviderStore {
     }
 
     func refreshAll() async {
-        await withTaskGroup { group in
-            for provider in providers {
-                group.addTask { await self.refresh(provider) }
-            }
+        let refreshes = providers.map { provider in
+            Task { await self.refresh(provider) }
+        }
+        for refresh in refreshes {
+            _ = await refresh.value
         }
     }
 

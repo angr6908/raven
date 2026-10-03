@@ -34,7 +34,10 @@ private nonisolated struct OkEnvelope: Decodable {
 nonisolated struct PanelClient {
     static let shared = PanelClient()
 
-    var baseURL: URL { URL(string: LocalProxy.baseURL)! }
+    var baseURL: URL {
+        let override = ProcessInfo.processInfo.environment["RAVEN_PANEL_URL"]
+        return URL(string: override ?? LocalProxy.baseURL) ?? URL(string: LocalProxy.baseURL)!
+    }
 
     func get<T: Decodable>(_ path: String, query: [URLQueryItem] = [], timeout: TimeInterval = 20) async throws -> T {
         let data = try await send("GET", path: path, query: query, body: nil, timeout: timeout)

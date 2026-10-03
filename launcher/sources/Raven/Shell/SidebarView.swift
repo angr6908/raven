@@ -1,156 +1,85 @@
 import SwiftUI
 
 struct SidebarView: View {
-    let store: ProviderStore
-    let workspace: Workspace
+    @Environment(AppModel.self) private var app
+    @Environment(ProviderStore.self) private var store
 
     var body: some View {
-        List(selection: destinationBinding) {
-            Section("Library") {
-                SidebarDestinationRow(destination: .library, title: "All Models", symbol: "square.stack.3d.up",
-                                      badge: store.modelCount)
-                SidebarDestinationRow(destination: .pinned, title: "Pinned", symbol: "pin",
-                                      badge: store.pinned.count)
-                SidebarDestinationRow(destination: .recents, title: "Recents", symbol: "clock.arrow.circlepath",
-                                      badge: store.recents.count)
+        List(selection: selection) {
+            Section("Launch") {
+                Label("Models", systemImage: "square.stack.3d.up")
+                    .tag(Page.models)
+                Label("Pinned", systemImage: "pin")
+                    .tag(Page.pinned)
+                Label("Recents", systemImage: "clock.arrow.circlepath")
+                    .tag(Page.recents)
             }
 
-            Section {
+            Section("Providers") {
                 ForEach(store.providers) { provider in
-                    SidebarProviderRow(provider: provider, status: store.status(of: provider)) {
-                        workspace.destination = Destination.provider(provider.id)
-                    } refreshAction: {
-                        workspace.refresh(provider)
-                    } editAction: {
-                        workspace.edit(provider)
-                    } removeAction: {
-                        workspace.confirmRemoval(of: provider)
-                    }
+                    ProviderRow(provider: provider)
                 }
-                .onMove(perform: moveProviders)
-            } header: {
-                SidebarProvidersHeader {
-                    workspace.addProvider()
+                .onMove { store.moveProviders(from: $0, to: $1) }
+                Button {
+                    app.addProvider()
+                } label: {
+                    Label("Add Provider", systemImage: "plus")
+                        .foregroundStyle(.secondary)
                 }
+                .buttonStyle(.plain)
+                .help("Add a provider (⌘N)")
             }
 
-            Section("Panel") {
-                SidebarDestinationRow(destination: .overview, title: "Overview", symbol: "chart.bar.xaxis", badge: nil)
-                SidebarDestinationRow(destination: .usage, title: "Usage", symbol: "list.bullet.rectangle", badge: nil)
-                SidebarDestinationRow(destination: .accounts, title: "Accounts", symbol: "person.badge.key", badge: nil)
-                SidebarDestinationRow(destination: .providersPage, title: "Models", symbol: "square.stack.3d.up.fill", badge: nil)
-                SidebarDestinationRow(destination: .pricing, title: "Pricing", symbol: "tag", badge: nil)
+            Section("Proxy") {
+                Label("Overview", systemImage: "chart.xyaxis.line").tag(Page.overview)
+                Label("Usage", systemImage: "tablecells").tag(Page.usage)
+                Label("Accounts", systemImage: "person.2.badge.key").tag(Page.accounts)
+                Label("Routing", systemImage: "arrow.triangle.branch").tag(Page.routing)
+                Label("Pricing", systemImage: "dollarsign").tag(Page.pricing)
             }
         }
         .listStyle(.sidebar)
-        .navigationSplitViewColumnWidth(
-            min: Metrics.sidebarMin,
-            ideal: Metrics.sidebarIdeal,
-            max: Metrics.sidebarMax)
-    }
-
-    private var destinationBinding: Binding<Destination?> {
-        Binding(
-            get: { workspace.destination },
-            set: { if let value = $0 { workspace.destination = value } })
-    }
-
-    private func moveProviders(from source: IndexSet, to destination: Int) {
-        store.moveProviders(from: source, to: destination)
-    }
-}
-
-private struct SidebarDestinationRow: View {
-    let destination: Destination
-    let title: String
-    let symbol: String
-    let badge: Int?
-
-    var body: some View {
-        Label {
+        .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack {
-                Text(title)
-                Spacer(minLength: 4)
-                if let badge, badge > 0 {
-                    Pill(text: String(badge))
-                }
+                HealthBadge()
+                Spacer()
             }
-        } icon: {
-            Image(systemName: symbol)
+            .padding(Space.md)
         }
-        .tag(destination)
+    }
+
+    private var selection: Binding<Page?> {
+        Binding(get: { app.page }, set: { if let page = $0 { app.page = page } })
     }
 }
 
-private struct SidebarProvidersHeader: View {
-    let addAction: () -> Void
-
-    var body: some View {
-        HStack {
-            SectionHeader(title: "Providers")
-            Spacer()
-            Button(action: addAction) {
-                Image(systemName: "plus")
-            }
-            .buttonStyle(.borderless)
-            .controlSize(.small)
-            .help("Add a provider (⌘N)")
-        }
-    }
-}
-
-private struct SidebarProviderRow: View {
+private struct ProviderRow: View {
+    @Environment(AppModel.self) private var app
+    @Environment(ProviderStore.self) private var store
     let provider: Provider
-    let status: ProviderStatus
-    let selectAction: () -> Void
-    let refreshAction: () -> Void
-    let editAction: () -> Void
-    let removeAction: () -> Void
 
     var body: some View {
-        HStack(spacing: 0) {
-            Label {
-                HStack {
-                    Text(provider.name)
-                    Spacer(minLength: 4)
-                    statusTrailing
-                }
-            } icon: {
-                StatusDot(tint: statusTint)
-                    .padding(.trailing, 2)
+        let status = store.status(of: provider)
+        Label {
+            Text(provider.name).lineLimit(1)
+        } icon: {
+            switch status {
+            case .failed:
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+            case .loading:
+                ProgressView().controlSize(.small)
+            default:
+                Image(systemName: "server.rack").foregroundStyle(provider.accent)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture { selectAction() }
         }
-        .contextMenu {
-            Button("Refresh") { refreshAction() }
-            Button("Edit…") { editAction() }
-            Divider()
-            Button("Remove…") { removeAction() }
-        }
-        .tag(Destination.provider(provider.id))
+        .tag(Page.provider(provider.id))
         .help("\(provider.host) · \(status.subtitle)")
-    }
-
-    @ViewBuilder
-    private var statusTrailing: some View {
-        switch status {
-        case .failed:
-            Image(systemName: "exclamationmark.triangle.fill")
-                .foregroundStyle(.red)
-                .imageScale(.small)
-        case .loading:
-            ProgressView()
-                .controlSize(.mini)
-        case .ready(let count):
-            Pill(text: String(count))
-        case .empty:
-            EmptyView()
+        .contextMenu {
+            Button("Refresh") { app.refresh(provider) }
+            Button("Edit…") { app.edit(provider) }
+            Divider()
+            Button("Remove…", role: .destructive) { app.confirmRemoval(of: provider) }
         }
     }
 
-    private var statusTint: Color {
-        RavenTheme.statusTint(status)
-    }
 }

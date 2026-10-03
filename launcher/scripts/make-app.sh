@@ -18,6 +18,7 @@ rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 
 cp "$BUILD" "$BUNDLE/Contents/MacOS/Raven"
+cp -R "$APP_DIR/resources/Logos" "$BUNDLE/Contents/Resources/Logos"
 
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
     "$ACTOOL" "$ICON" \

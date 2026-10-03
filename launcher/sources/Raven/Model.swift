@@ -60,9 +60,6 @@ nonisolated struct ModelEntry: Identifiable, Codable, Hashable {
 
     var owner: String { ownedBy ?? "Other" }
 
-    var shortName: String {
-        modelID.split(separator: "@", maxSplits: 1).first.map(String.init) ?? modelID
-    }
 
     var family: ModelFamily { ModelFamily(modelID: modelID) }
 }
@@ -106,41 +103,8 @@ nonisolated struct ModelSection: Identifiable {
     }
 }
 
-nonisolated enum Destination: Hashable {
-    case library
-    case pinned
-    case recents
-    case provider(UUID)
-    case overview
-    case usage
-    case accounts
-    case providersPage
-    case pricing
-
-    var symbol: String {
-        switch self {
-        case .library: "square.stack.3d.up"
-        case .pinned: "pin.fill"
-        case .recents: "clock.arrow.circlepath"
-        case .provider: "server.rack"
-        case .overview: "chart.bar.xaxis"
-        case .usage: "list.bullet.rectangle"
-        case .accounts: "person.badge.key.fill"
-        case .providersPage: "square.stack.3d.up.fill"
-        case .pricing: "tag"
-        }
-    }
-
-    var isLauncherPage: Bool {
-        switch self {
-        case .library, .pinned, .recents, .provider: true
-        case .overview, .usage, .accounts, .providersPage, .pricing: false
-        }
-    }
-}
-
 nonisolated enum ModelFamily: Hashable {
-    case claude, gpt, gemini, deepseek, llama, mistral, qwen, grok, kimi, minimax, glm, other
+    case claude, gpt, gemini, deepseek, llama, mistral, qwen, grok, kimi, minimax, glm, mimo, other
 
     init(modelID: String) {
         var id = modelID.lowercased()
@@ -155,9 +119,27 @@ nonisolated enum ModelFamily: Hashable {
             ("claude", .claude), ("gpt", .gpt), ("o1", .gpt), ("o3", .gpt), ("o4", .gpt),
             ("gemini", .gemini), ("deepseek", .deepseek), ("llama", .llama),
             ("mistral", .mistral), ("mixtral", .mistral), ("codestral", .mistral),
-            ("qwen", .qwen), ("grok", .grok), ("kimi", .kimi), ("minimax", .minimax), ("glm", .glm),
+            ("qwen", .qwen), ("grok", .grok), ("kimi", .kimi), ("minimax", .minimax), ("glm", .glm), ("mimo", .mimo),
         ]
         self = table.first { id.hasPrefix($0.0) }?.1 ?? .other
+    }
+
+    var title: String {
+        switch self {
+        case .claude: "Claude"
+        case .gpt: "GPT"
+        case .gemini: "Gemini"
+        case .deepseek: "DeepSeek"
+        case .llama: "Llama"
+        case .mistral: "Mistral"
+        case .qwen: "Qwen"
+        case .grok: "Grok"
+        case .kimi: "Kimi"
+        case .minimax: "MiniMax"
+        case .glm: "GLM"
+        case .mimo: "MiMo"
+        case .other: "Other"
+        }
     }
 
     var symbol: String {
@@ -173,6 +155,7 @@ nonisolated enum ModelFamily: Hashable {
         case .kimi: "moon.stars"
         case .minimax: "waveform"
         case .glm: "hexagon"
+        case .mimo: "m.square"
         case .other: "cube"
         }
     }
@@ -228,10 +211,6 @@ nonisolated enum ProviderStatus: Hashable {
         }
     }
 
-    var isFailure: Bool {
-        if case .failed = self { return true }
-        return false
-    }
 }
 
 nonisolated enum ProviderKind: String, CaseIterable, Identifiable, Codable {

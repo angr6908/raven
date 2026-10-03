@@ -107,10 +107,5 @@ final class WindowDraft: Identifiable {
         return value
     }
 
-    var isValid: Bool { useAdvertised || tokens != nil }
 
-    var preview: String? {
-        if useAdvertised { return advertised.map(ContextWindow.label) ?? "Provider default" }
-        return tokens.map(ContextWindow.label)
-    }
 }

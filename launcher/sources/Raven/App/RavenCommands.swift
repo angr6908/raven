@@ -1,99 +1,87 @@
 import SwiftUI
 
 struct RavenCommands: Commands {
-    let store: ProviderStore
-    let workspace: Workspace
-    @Bindable var shell: ShellState
+    let model: AppModel
+
+    private var store: ProviderStore { model.store }
 
     var body: some Commands {
         CommandGroup(replacing: .newItem) {
-            Button("Add Provider…") { workspace.addProvider() }
+            Button("Add Provider…") { model.addProvider() }
                 .keyboardShortcut("n", modifiers: .command)
-                .disabled(workspace.providerDraft != nil)
-            Button("Add Local Proxy") { workspace.addLocalProxy() }
-                .disabled(workspace.providerDraft != nil)
+            Button("Add Local Proxy") { model.addLocalProxy() }
         }
 
         CommandMenu("Launch") {
-            Button("Launch") { workspace.launch() }
+            Button("Quick Launch…") { model.sheet = .quickLaunch }
+                .keyboardShortcut("k", modifiers: .command)
+                .disabled(store.providers.isEmpty)
+
+            Button("Launch") { model.launch() }
                 .keyboardShortcut(.return, modifiers: .command)
-                .disabled(!store.canLaunch || workspace.isLaunching)
+                .disabled(!store.canLaunch || model.isLaunching)
 
             Menu("Client") {
                 ForEach(ProviderKind.allCases) { kind in
-                    Button {
-                        store.client = kind
-                    } label: {
-                        if store.client == kind {
-                            Label(kind.displayName, systemImage: "checkmark")
-                        } else {
-                            Text(kind.displayName)
-                        }
-                    }
+                    Toggle(kind.displayName, isOn: Binding(
+                        get: { store.client == kind },
+                        set: { if $0 { store.client = kind } }))
                 }
             }
 
-            Button("Choose Folder…") { workspace.chooseWorkdir() }
+            Button("Choose Folder…") { model.isChoosingFolder = true }
                 .keyboardShortcut("o", modifiers: [.command, .shift])
 
             Divider()
 
-            Button(pinTitle) { togglePin() }
-                .keyboardShortcut("d", modifiers: .command)
-                .disabled(store.selectedItem == nil)
-
-            Button("Set Context Window…") { editWindow() }
-                .keyboardShortcut("k", modifiers: [.command, .shift])
-                .disabled(store.selectedItem == nil)
+            Button(pinTitle) {
+                if let item = store.selectedItem { store.togglePin(item) }
+            }
+            .keyboardShortcut("d", modifiers: .command)
+            .disabled(store.selectedItem == nil)
 
             Divider()
 
-            Button(workspace.didCopyScript ? "Copied" : "Copy Launch Script") { workspace.copyScript() }
+            Button(model.copiedScript ? "Copied" : "Copy Launch Script") { model.copyScript() }
                 .keyboardShortcut("c", modifiers: [.command, .shift])
                 .disabled(!store.canLaunch)
 
-            Button("Show Launch Script…") { workspace.isShowingScript = true }
+            Button("Show Launch Script…") { model.sheet = .script }
                 .disabled(!store.canLaunch)
         }
 
         CommandMenu("Provider") {
-            Button("Refresh") { workspace.refreshVisible() }
+            Button("Refresh") { model.refreshCurrent() }
                 .keyboardShortcut("r", modifiers: .command)
-            Button("Refresh All") { workspace.refreshAll() }
+            Button("Refresh All Providers") { model.refreshAll() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
                 .disabled(store.providers.isEmpty)
 
             Divider()
 
-            Button("Edit Provider…") { editProvider() }
-                .keyboardShortcut("e", modifiers: .command)
-                .disabled(workspace.activeProvider == nil)
+            Button("Edit Provider…") {
+                if let provider = model.activeProvider { model.edit(provider) }
+            }
+            .keyboardShortcut("e", modifiers: .command)
+            .disabled(model.activeProvider == nil)
 
-            Button("Remove Provider…") { removeProvider() }
-                .keyboardShortcut(.delete, modifiers: [])
-                .disabled(workspace.activeProvider == nil)
+            Button("Remove Provider…") {
+                if let provider = model.activeProvider { model.confirmRemoval(of: provider) }
+            }
+            .disabled(model.activeProvider == nil)
         }
 
         CommandGroup(after: .sidebar) {
             Divider()
-            Button("All Models") { workspace.destination = .library }
-                .keyboardShortcut("1", modifiers: .command)
-            Button("Pinned") { workspace.destination = .pinned }
-                .keyboardShortcut("2", modifiers: .command)
-            Button("Recents") { workspace.destination = .recents }
-                .keyboardShortcut("3", modifiers: .command)
+            pageButton("Models", .models, "1")
+            pageButton("Pinned", .pinned, "2")
+            pageButton("Recents", .recents, "3")
             Divider()
-            Button("Overview") { workspace.destination = .overview }
-                .keyboardShortcut("4", modifiers: .command)
-            Button("Usage") { workspace.destination = .usage }
-                .keyboardShortcut("5", modifiers: .command)
-            Button("Accounts") { workspace.destination = .accounts }
-                .keyboardShortcut("6", modifiers: .command)
-            Button("Models") { workspace.destination = .providersPage }
-                .keyboardShortcut("7", modifiers: .command)
-            Button("Pricing") { workspace.destination = .pricing }
-                .keyboardShortcut("8", modifiers: .command)
-
+            pageButton("Overview", .overview, "4")
+            pageButton("Usage", .usage, "5")
+            pageButton("Accounts", .accounts, "6")
+            pageButton("Routing", .routing, "7")
+            pageButton("Pricing", .pricing, "8")
             Divider()
         }
     }
@@ -103,23 +91,8 @@ struct RavenCommands: Commands {
         return store.isPinned(item) ? "Unpin Model" : "Pin Model"
     }
 
-    private func togglePin() {
-        guard let item = store.selectedItem else { return }
-        store.togglePin(item)
-    }
-
-    private func editWindow() {
-        guard let item = store.selectedItem else { return }
-        workspace.beginEditingWindow(item)
-    }
-
-    private func editProvider() {
-        guard let provider = workspace.activeProvider else { return }
-        workspace.edit(provider)
-    }
-
-    private func removeProvider() {
-        guard let provider = workspace.activeProvider else { return }
-        workspace.confirmRemoval(of: provider)
+    private func pageButton(_ title: String, _ page: Page, _ key: KeyEquivalent) -> some View {
+        Button(title) { model.page = page }
+            .keyboardShortcut(key, modifiers: .command)
     }
 }

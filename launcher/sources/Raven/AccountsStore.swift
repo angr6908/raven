@@ -93,10 +93,6 @@ final class AccountsStore {
         }
     }
 
-    func wbStatusByUid(_ uid: String?) -> WorkbuddyAccountStatus? {
-        guard let uid else { return nil }
-        return wbStatus?.accounts.first { $0.uid == uid }
-    }
 
     func workbuddyStatus(for account: AccountView) -> WorkbuddyAccountStatus? {
         guard let accounts = wbStatus?.accounts else { return nil }
@@ -125,16 +121,6 @@ final class AccountsStore {
             self.error = message.isEmpty ? fallback : message
             return false
         }
-    }
-
-    func editAccount(name: String, key: String?, sessionToken: String?,
-                     email: String?, password: String?, disabled: Bool?) async -> Bool {
-        await run({
-            try await PanelClient.shared.postVoid("/api/accounts/edit",
-                                                  json: EditAccountBody(name: name,
-                                                                        sessionToken: blankToNil(sessionToken),
-                                                                        disabled: disabled))
-        }, fallback: "Failed to edit account")
     }
 
     func removeAccount(_ name: String) async -> Bool {

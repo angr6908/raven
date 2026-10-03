@@ -99,7 +99,6 @@ nonisolated enum PanelLogic {
     }
 
     static let defaultPeakWindows: [[Int]] = [[1, 4], [6, 10]]
-    static let baseRateFields = ["input", "output", "cached"]
 
     static func uniqueByLowercased(_ names: [String]) -> [String] {
         var seen = Set<String>()

@@ -72,33 +72,11 @@ final class PricingStore {
         }
     }
 
-    func addWindow(_ model: String) {
-        mutate(model) { price in
-            var windows = price.peakWindows ?? []
-            windows.append([1, 4])
-            price.peakWindows = windows
-        }
-    }
 
-    func removeWindow(_ model: String, index: Int) {
-        mutate(model) { price in
-            var windows = price.peakWindows ?? []
-            guard index < windows.count else { return }
-            windows.remove(at: index)
-            price.peakWindows = windows
-        }
-    }
 
-    func editWindow(_ model: String, index: Int, pos: Int, value: Int?) {
+
+    func setWindows(_ model: String, windows: [[Int]]) {
         mutate(model) { price in
-            var windows = price.peakWindows ?? []
-            guard index < windows.count, windows[index].count > pos else { return }
-            guard let value else {
-                windows.remove(at: index)
-                price.peakWindows = windows
-                return
-            }
-            windows[index][pos] = value
             price.peakWindows = windows
         }
     }
@@ -193,36 +171,38 @@ final class PricingStore {
         }
     }
 
+    nonisolated static func lookupOutcome(_ model: String) async -> PriceLookupOutcome {
+        let found = try? await lookupModelsDev(model)
+        return PriceLookupOutcome(model: model, lookup: found)
+    }
+
     func fetchAll(_ models: [String]) async -> PricingBatchOutcome {
         var updates: [(String, ModelsDevLookup)] = []
         var empty = 0
         var failed = 0
-        await withTaskGroup(of: (String, Result<ModelsDevLookup, any Error>).self) { group in
-            for model in models {
-                group.addTask {
-                    do {
-                        return (model, .success(try await Self.lookupModelsDev(model)))
-                    } catch {
-                        return (model, .failure(error))
-                    }
-                }
+        let lookups = models.map { model in
+            Task { await Self.lookupOutcome(model) }
+        }
+        for task in lookups {
+            let outcome = await task.value
+            guard let found = outcome.lookup else {
+                failed += 1
+                continue
             }
-            for await (model, result) in group {
-                switch result {
-                case .success(let lookup):
-                    if lookup.input == nil && lookup.output == nil && lookup.cacheRead == nil {
-                        empty += 1
-                    } else {
-                        updates.append((model, lookup))
-                    }
-                case .failure:
-                    failed += 1
-                }
+            if found.input == nil && found.output == nil && found.cacheRead == nil {
+                empty += 1
+            } else {
+                updates.append((outcome.model, found))
             }
         }
         applyBatch(updates)
         return PricingBatchOutcome(priced: updates.count, empty: empty, failed: failed)
     }
+}
+
+nonisolated struct PriceLookupOutcome: Sendable {
+    let model: String
+    let lookup: ModelsDevLookup?
 }
 
 nonisolated enum PricingFetchOutcome {
@@ -235,7 +215,7 @@ nonisolated struct PricingBatchOutcome: Equatable {
     var failed: Int
 }
 
-nonisolated struct PricingRowData: Equatable {
+nonisolated struct PricingRowData: Equatable, Sendable {
     var model: String
     var price: ModelPrice
     var peak: Bool
