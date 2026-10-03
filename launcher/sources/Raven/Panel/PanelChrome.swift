@@ -105,9 +105,10 @@ struct PanelNotice: View {
                 Spacer(minLength: 0)
             }
             .padding(10)
-            .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
+            .background(severity.tint.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
             .overlay {
-                RoundedRectangle(cornerRadius: 10).strokeBorder(.separator, lineWidth: 1)
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(severity.tint.opacity(0.25), lineWidth: 1)
             }
         }
     }
@@ -119,31 +120,33 @@ struct StatTile: View {
     var value: String
     var sub: String?
     var badge: String?
+    var tint: Color = .accentColor
 
     var body: some View {
         GlassCard(interactive: true) {
             VStack(alignment: .leading, spacing: 5) {
                 HStack(spacing: 6) {
+                    Image(systemName: icon)
+                        .imageScale(.small)
+                        .foregroundStyle(tint)
+                        .frame(width: 18, height: 18)
+                        .background(tint.opacity(0.14), in: Circle())
                     Text(label)
                         .font(.system(size: 12, weight: .medium))
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 4)
-                    Image(systemName: icon)
-                        .imageScale(.small)
-                        .foregroundStyle(.secondary)
+                    if let badge {
+                        Pill(text: badge)
+                    }
                 }
                 Text(value)
-                    .font(RavenFont.numeric(22, weight: .semibold))
+                    .font(RavenFont.numeric(24, weight: .semibold))
                     .lineLimit(1)
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 Text(sub ?? " ")
                     .font(RavenFont.caption)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                if let badge {
-                    Pill(text: badge)
-                } else {
-                    Color.clear.frame(height: 16)
-                }
             }
         }
         .frame(minHeight: 92)
@@ -181,6 +184,55 @@ struct ChartCard<Content: View>: View {
                 content
                     .frame(height: chartHeight)
             }
+        }
+    }
+}
+
+struct PanelPageHeader: View {
+    var title: String
+    var subtitle: String?
+    var icon: String
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 17, weight: .medium))
+                .foregroundStyle(.white)
+                .frame(width: 34, height: 34)
+                .background(Color.accentColor.gradient, in: .rect(cornerRadius: 9))
+                .help(title)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                    .font(.system(size: 20, weight: .semibold))
+                if let subtitle {
+                    Text(subtitle)
+                        .font(RavenFont.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                }
+            }
+            Spacer(minLength: 8)
+        }
+        .padding(.top, Metrics.spacing2)
+    }
+}
+
+struct PanelSection<Content: View>: View {
+    var title: String
+    var trailing: AnyView?
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                Text(title)
+                    .font(.system(size: 15, weight: .semibold))
+                Spacer(minLength: 8)
+                if let trailing {
+                    trailing
+                }
+            }
+            content
         }
     }
 }

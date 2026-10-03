@@ -44,9 +44,11 @@ struct RavenToolbar: ToolbarContent {
             .disabled(store.isRefreshing)
             .help("Refresh this view (⌘R)")
         }
+        .visibilityPriority(.high)
 
         ToolbarItem(placement: .status) {
             HealthPill(store: store)
         }
+        .visibilityPriority(.low)
     }
 }

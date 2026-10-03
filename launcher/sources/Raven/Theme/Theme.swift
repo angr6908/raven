@@ -19,7 +19,6 @@ enum Metrics {
     static let sidebarMin: CGFloat = 220
     static let sidebarIdeal: CGFloat = 250
     static let sidebarMax: CGFloat = 340
-    static let inspectorIdeal: CGFloat = 300
 }
 
 enum RavenFont {

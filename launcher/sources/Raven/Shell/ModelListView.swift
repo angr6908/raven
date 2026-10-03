@@ -7,48 +7,56 @@ struct ModelListView: View {
     var body: some View {
         Group {
             if let provider = workspace.focusedProvider, let message = store.error(for: provider) {
-                providerError(provider, message)
+                ModelListProviderError(provider: provider, message: message, workspace: workspace)
             } else if store.isRefreshing && store.modelCount == 0 {
                 RavenLoader(message: "Loading models…")
             } else if workspace.isSearching && workspace.isEmptyResult {
-                EmptyState(symbol: "magnifyingglass",
-                           title: "No matches",
-                           message: "No models match “\(workspace.search)”.")
+                ModelListNoMatches(search: workspace.search)
             } else if workspace.isEmptyResult {
-                emptyDestination
+                ModelListEmpty(destination: workspace.destination,
+                               providerName: workspace.focusedProvider.map { store.provider(id: $0.id)?.name ?? "This provider" },
+                               workspace: workspace)
             } else {
-                list
+                ModelSectionedList(sections: workspace.sections, store: store, workspace: workspace)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
+}
 
-    private var list: some View {
+struct ModelSectionedList: View {
+    let sections: [ModelSection]
+    let store: ProviderStore
+    let workspace: Workspace
+
+    var body: some View {
         ScrollView {
             LazyVStack(alignment: .leading, spacing: 0, pinnedViews: [.sectionHeaders]) {
-                ForEach(workspace.sections) { section in
+                ForEach(sections) { section in
                     Section {
                         ForEach(section.items) { item in
                             ModelRowView(item: item, store: store, workspace: workspace)
                         }
                     } header: {
-                        sectionHeader(section)
+                        ModelSectionHeaderView(section: section)
                     }
                 }
             }
             .padding(.vertical, Metrics.spacing2)
         }
+        .swipeActionsContainer()
     }
+}
 
-    private func sectionHeader(_ section: ModelSection) -> some View {
+struct ModelSectionHeaderView: View {
+    let section: ModelSection
+
+    var body: some View {
         HStack(spacing: 6) {
-            switch section.kind {
-            case .provider(let provider):
+            if case .provider(let provider) = section.kind {
                 Image(systemName: "server.rack")
                     .foregroundStyle(RavenTheme.providerAccent(provider))
                     .imageScale(.small)
-            case .owner:
-                EmptyView()
             }
             SectionHeader(title: section.kind.title)
             Spacer()
@@ -58,31 +66,14 @@ struct ModelListView: View {
         .padding(.vertical, 5)
         .background(.bar)
     }
+}
 
-    @ViewBuilder
-    private var emptyDestination: some View {
-        switch workspace.destination {
-        case .pinned:
-            EmptyState(symbol: "pin",
-                       title: "No pinned models",
-                       message: "Pin the models you reach for most and they'll collect here.")
-        case .provider(let id):
-            let name = store.provider(id: id)?.name ?? "This provider"
-            EmptyState(symbol: "tray", title: "No models", message: "\(name) returned an empty model list.") {
-                Button("Refresh") {
-                    if let provider = store.provider(id: id) { workspace.refresh(provider) }
-                }
-            }
-        default:
-            EmptyState(symbol: "tray",
-                       title: "No models",
-                       message: "None of your providers returned any models.") {
-                Button("Refresh All") { workspace.refreshAll() }
-            }
-        }
-    }
+struct ModelListProviderError: View {
+    let provider: Provider
+    let message: String
+    let workspace: Workspace
 
-    private func providerError(_ provider: Provider, _ message: String) -> some View {
+    var body: some View {
         EmptyState(symbol: "wifi.exclamationmark",
                    title: "Couldn't reach \(provider.name)",
                    message: "\(message)\n\(provider.modelsURL)") {
@@ -91,6 +82,44 @@ struct ModelListView: View {
                     .buttonStyle(.glassProminent)
                 Button("Edit Provider…") { workspace.edit(provider) }
                     .buttonStyle(.glass)
+            }
+        }
+    }
+}
+
+struct ModelListNoMatches: View {
+    let search: String
+
+    var body: some View {
+        EmptyState(symbol: "magnifyingglass",
+                   title: "No matches",
+                   message: "No models match “\(search)”.")
+    }
+}
+
+struct ModelListEmpty: View {
+    let destination: Destination
+    let providerName: String?
+    let workspace: Workspace
+
+    var body: some View {
+        switch destination {
+        case .pinned:
+            EmptyState(symbol: "pin",
+                       title: "No pinned models",
+                       message: "Pin the models you reach for most and they'll collect here.")
+        case .provider:
+            EmptyState(symbol: "tray", title: "No models",
+                       message: "\(providerName ?? "This provider") returned an empty model list.") {
+                Button("Refresh") {
+                    if let provider = workspace.focusedProvider { workspace.refresh(provider) }
+                }
+            }
+        default:
+            EmptyState(symbol: "tray",
+                       title: "No models",
+                       message: "None of your providers returned any models.") {
+                Button("Refresh All") { workspace.refreshAll() }
             }
         }
     }
@@ -129,7 +158,7 @@ struct ModelRowView: View {
                     .help("Pinned")
             }
 
-            windowBadge
+            ModelWindowBadge(badge: store.windowBadge(for: item))
         }
         .padding(.horizontal, Metrics.spacing4)
         .padding(.vertical, 5)
@@ -139,7 +168,20 @@ struct ModelRowView: View {
         .onTapGesture { store.selection = item.ref }
         .onTapGesture(count: 2) { workspace.launch(item) }
         .onHover { hover.isHovering = $0 }
-        .contextMenu { menu }
+        .contextMenu { ModelRowMenu(item: item, store: store, workspace: workspace) }
+        .swipeActions(edge: .leading, allowsFullSwipe: true) {
+            Button { workspace.launch(item) } label: {
+                Label("Launch", systemImage: "play.fill")
+            }
+            .tint(.accentColor)
+        }
+        .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+            Button { store.togglePin(item) } label: {
+                Label(store.isPinned(item) ? "Unpin" : "Pin",
+                      systemImage: store.isPinned(item) ? "pin.slash" : "pin")
+            }
+            .tint(.orange)
+        }
     }
 
     @ViewBuilder
@@ -152,10 +194,13 @@ struct ModelRowView: View {
             Color.clear
         }
     }
+}
 
-    private var windowBadge: some View {
-        let badge = store.windowBadge(for: item)
-        return HStack(spacing: 3) {
+struct ModelWindowBadge: View {
+    let badge: WindowBadge
+
+    var body: some View {
+        HStack(spacing: 3) {
             if badge.isOverride {
                 Image(systemName: "slider.horizontal.3")
                     .imageScale(.small)
@@ -169,9 +214,14 @@ struct ModelRowView: View {
               ? "Context window set by you — where the client's context bar fills and auto-compaction fires"
               : "Context window reported by the provider")
     }
+}
 
-    @ViewBuilder
-    private var menu: some View {
+struct ModelRowMenu: View {
+    let item: ModelItem
+    let store: ProviderStore
+    let workspace: Workspace
+
+    var body: some View {
         Button("Launch \(store.client.displayName)") { workspace.launch(item) }
         Divider()
         Button(store.isPinned(item) ? "Unpin" : "Pin") { store.togglePin(item) }

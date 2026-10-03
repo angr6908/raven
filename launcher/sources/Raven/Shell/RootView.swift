@@ -12,9 +12,10 @@ struct RootView: View {
             DetailView(store: store, workspace: workspace)
                 .navigationTitle(windowTitle)
                 .navigationSubtitle(windowSubtitle)
-                .inspector(isPresented: inspectorBinding) {
-                    LaunchInspectorView(store: store, workspace: workspace)
-                        .inspectorColumnWidth(min: 260, ideal: Metrics.inspectorIdeal)
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    if workspace.destination.isLauncherPage && !store.providers.isEmpty {
+                        LaunchBar(store: store, workspace: workspace)
+                    }
                 }
         }
         .searchable(text: searchBinding, placement: .toolbar, prompt: Text(workspace.searchPlaceholder))
@@ -22,16 +23,16 @@ struct RootView: View {
         .sheet(item: sheetBinding) { request in
             sheetContent(request)
         }
-        .alert("Remove this provider?", isPresented: removalBinding, presenting: workspace.pendingRemoval) { provider in
+        .alert("Remove this provider?", item: removalBinding) { provider in
             Button("Remove \(provider.name)", role: .destructive) {
                 workspace.removePendingProvider()
             }
-            Button("Cancel", role: .cancel) { workspace.pendingRemoval = nil }
+            Button("Cancel", role: .cancel) {}
         } message: { provider in
             Text("Raven forgets \(provider.name)'s base URL and API key, along with its pins and context window overrides.")
         }
-        .alert("Couldn't launch", isPresented: launchErrorBinding, presenting: workspace.launchError) { _ in
-            Button("OK", role: .cancel) { workspace.launchError = nil }
+        .alert("Couldn't launch", item: launchErrorBinding) { _ in
+            Button("OK", role: .cancel) {}
         } message: { message in
             Text(message)
         }
@@ -41,7 +42,7 @@ struct RootView: View {
                 store.workdir = url
             }
         }
-        .frame(minWidth: 760, minHeight: 480)
+        .frame(minWidth: 760, minHeight: 520)
     }
 
     private var windowTitle: String {
@@ -56,12 +57,6 @@ struct RootView: View {
 
     private var searchBinding: Binding<String> {
         Binding(get: { workspace.search }, set: { workspace.search = $0 })
-    }
-
-    private var inspectorBinding: Binding<Bool> {
-        Binding(
-            get: { shell.inspectorShown && workspace.destination.isLauncherPage && !store.providers.isEmpty },
-            set: { shell.inspectorShown = $0 })
     }
 
     private var workdirBinding: Binding<Bool> {
@@ -87,6 +82,18 @@ struct RootView: View {
             })
     }
 
+    private var removalBinding: Binding<Provider?> {
+        Binding(
+            get: { workspace.pendingRemoval },
+            set: { workspace.pendingRemoval = $0 })
+    }
+
+    private var launchErrorBinding: Binding<String?> {
+        Binding(
+            get: { workspace.launchError },
+            set: { workspace.launchError = $0 })
+    }
+
     @ViewBuilder
     private func sheetContent(_ request: SheetRequest) -> some View {
         switch request {
@@ -97,17 +104,5 @@ struct RootView: View {
         case .script:
             LaunchScriptSheet(store: store, workspace: workspace)
         }
-    }
-
-    private var removalBinding: Binding<Bool> {
-        Binding(
-            get: { workspace.pendingRemoval != nil },
-            set: { if !$0 { workspace.pendingRemoval = nil } })
-    }
-
-    private var launchErrorBinding: Binding<Bool> {
-        Binding(
-            get: { workspace.launchError != nil },
-            set: { if !$0 { workspace.launchError = nil } })
     }
 }

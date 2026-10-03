@@ -41,47 +41,47 @@ struct AccountsView: View {
 
     var body: some View {
         PanelPage {
+            PanelPageHeader(title: "Accounts",
+                            subtitle: subtitle,
+                            icon: "person.badge.key.fill")
             PanelNotice(message: store.error ?? store.fetchError)
-            banners
-            workbuddySection
-            antigravitySection
+            waitingBanners
+            WorkbuddySection(store: store, page: page)
+            AntigravitySection(store: store, page: page)
         }
         .onAppear { store.start() }
         .onDisappear { store.stop() }
     }
 
-    private func sectionCard<Actions: View, Form: View, Body: View>(
-        _ title: String, count: Int,
-        @ViewBuilder actions: () -> Actions,
-        @ViewBuilder form: () -> Form,
-        @ViewBuilder body: () -> Body
-    ) -> some View {
-        GlassCard(padding: 14) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Text(title).font(.system(size: 14, weight: .semibold))
-                    Pill(text: String(count))
-                    Spacer(minLength: 8)
-                    actions()
-                }
-                form()
-                body()
-            }
-        }
+    private var subtitle: String? {
+        let wb = store.workbuddyAccounts.count
+        let ag = store.antigravityAccounts.count
+        if wb == 0 && ag == 0 { return nil }
+        let parts: [String] = [
+            wb == 0 ? nil : "\(wb) WorkBuddy",
+            ag == 0 ? nil : "\(ag) Antigravity",
+        ].compactMap { $0 }
+        return parts.joined(separator: " · ")
     }
-
-    private var banners: some View {
+    private var waitingBanners: some View {
         VStack(alignment: .leading, spacing: 8) {
             if let oauth = store.agOAuth {
-                waitingBanner("Waiting for the Google sign-in — finish it at accounts.google.com.", url: oauth.url)
+                AccountsWaitingBanner(text: "Waiting for the Google sign-in — finish it at accounts.google.com.",
+                                      url: oauth.url)
             }
             if let oauth = store.wbOAuth {
-                waitingBanner("Waiting for sign-in — complete the login at \(oauth.url).", url: oauth.url)
+                AccountsWaitingBanner(text: "Waiting for sign-in — complete the login at \(oauth.url).",
+                                      url: oauth.url)
             }
         }
     }
+}
 
-    private func waitingBanner(_ text: String, url: String) -> some View {
+struct AccountsWaitingBanner: View {
+    var text: String
+    var url: String
+
+    var body: some View {
         HStack(alignment: .top, spacing: 10) {
             ProgressView().controlSize(.small)
             Text(text)
@@ -95,13 +95,43 @@ struct AccountsView: View {
             .buttonStyle(.link)
         }
         .padding(10)
-        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 10))
-        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.separator, lineWidth: 1) }
+        .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12)
+                .strokeBorder(Color.accentColor.opacity(0.25), lineWidth: 1)
+        }
+    }
+}
+
+struct AccountFormBox<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            content
+        }
+        .padding(Metrics.spacing3)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 12))
+        .overlay {
+            RoundedRectangle(cornerRadius: 12).strokeBorder(.separator, lineWidth: 1)
+        }
+    }
+}
+
+struct WorkbuddySection: View {
+    let store: AccountsStore
+    @Bindable var page: AccountsPageState
+
+    var body: some View {
+        PanelSection(title: "WorkBuddy", trailing: AnyView(sectionActions)) {
+            sectionCard
+        }
     }
 
-    private var workbuddySection: some View {
+    var sectionActions: some View {
         let rows = store.workbuddyAccounts
-        return sectionCard("WorkBuddy", count: rows.count) {
+        return HStack(spacing: 8) {
             Button("Refresh", systemImage: "arrow.clockwise") {
                 Task { await store.refreshWorkbuddy() }
             }
@@ -113,20 +143,26 @@ struct AccountsView: View {
             }
             .controlSize(.small)
             .disabled(store.busy)
-        } form: {
-            if page.addFor == "workbuddy" {
-                workbuddyAddForm
-            }
-        } body: {
-            if rows.isEmpty {
-                EmptyState(symbol: "cpu",
-                           title: "No WorkBuddy accounts",
-                           message: "Sign in with the browser flow, read the credential the CodeBuddy desktop app wrote on this machine, or paste the auth JSON.") {
-                    Button("Add WorkBuddy account") { page.toggleAdd("workbuddy") }
+        }
+    }
+
+    var sectionCard: some View {
+        let rows = store.workbuddyAccounts
+        return GlassCard(padding: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                if page.addFor == "workbuddy" {
+                    WorkbuddyAddForm(store: store, page: page)
                 }
-            } else {
-                DataTable(columns: workbuddyColumns(rows), rowCount: rows.count, state: page.wbTable,
-                          maxHeight: 56 + CGFloat(rows.count) * 30 + 8)
+                if rows.isEmpty {
+                    EmptyState(symbol: "cpu",
+                               title: "No WorkBuddy accounts",
+                               message: "Sign in with the browser flow, read the credential the CodeBuddy desktop app wrote on this machine, or paste the auth JSON.") {
+                        Button("Add WorkBuddy account") { page.toggleAdd("workbuddy") }
+                    }
+                } else {
+                    DataTable(columns: workbuddyColumns(rows), rowCount: rows.count, state: page.wbTable,
+                              maxHeight: 56 + CGFloat(rows.count) * 30 + 8)
+                }
             }
         }
     }
@@ -134,48 +170,42 @@ struct AccountsView: View {
     private func workbuddyColumns(_ rows: [AccountView]) -> [DataColumn] {
         [
             DataColumn(title: "Account", width: 200) { row in
-                AnyView(Text(rows[row].workbuddyNickname ?? "—").font(.system(size: 11)))
+                AnyView(AccountCell(name: rows[row].workbuddyNickname ?? "—"))
             },
             DataColumn(title: "UID", width: 160) { row in
-                AnyView(Text(rows[row].workbuddyUid ?? "—")
-                    .font(RavenFont.mono(11))
-                    .lineLimit(1)
-                    .help(rows[row].workbuddyUid ?? ""))
+                AnyView(MonoCell(text: rows[row].workbuddyUid ?? "—"))
             },
             DataColumn(title: "Credits", width: 110, alignsRight: true) { row in
-                let status = store.wbStatusByUid(rows[row].workbuddyUid)
-                guard let status else { return AnyView(Text("—").font(RavenFont.numeric(11))) }
-                if status.cooling {
-                    return AnyView(BadgeText(text: wbCoolingText(status), tint: .secondary, soft: true)
-                        .help(status.reason ?? ""))
-                }
-                return AnyView(Text(AccountQuota.creditsText(status.credits)).font(RavenFont.numeric(11)))
+                AnyView(CreditsCell(store: store, uid: rows[row].workbuddyUid))
             },
             DataColumn(title: "Enabled", width: 74) { row in
-                AnyView(enabledToggle(rows[row]))
+                AnyView(AccountEnabledToggle(store: store, account: rows[row]))
             },
             DataColumn(title: "Actions", width: 56) { row in
-                AnyView(iconButton("trash", help: "Remove \(rows[row].name)", tint: .red) {
+                AnyView(AccountActionButton(symbol: "trash",
+                                            help: "Remove \(rows[row].name)",
+                                            tint: .red,
+                                            busy: store.busy) {
                     Task { await store.removeAccount(rows[row].name) }
                 })
             },
         ]
     }
+}
 
-    private func wbCoolingText(_ status: WorkbuddyAccountStatus) -> String {
-        guard let left = status.coolRemainingSec, left > 0 else { return "cooling" }
-        return "cooling · \(left / 60):\(String(format: "%02d", left % 60))"
-    }
+struct WorkbuddyAddForm: View {
+    let store: AccountsStore
+    @Bindable var page: AccountsPageState
 
-    private var workbuddyAddForm: some View {
+    var body: some View {
         let canSubmit = !store.busy && !page.wbAuthJson.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-        return AccountFormBox {
+        AccountFormBox {
             HStack {
                 Text("Auth JSON (or sign in)")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(.secondary)
                 Spacer(minLength: 8)
-                Button("Read from local") { readWorkbuddyLocal() }
+                Button("Read from local") { readLocal() }
                     .controlSize(.small)
                     .disabled(store.busy)
             }
@@ -187,7 +217,7 @@ struct AccountsView: View {
                 Text(page.wbNote).font(.system(size: 11)).foregroundStyle(.secondary)
             }
             HStack(spacing: 10) {
-                Button("Add WorkBuddy") { submitAddWorkbuddy() }
+                Button("Add WorkBuddy") { submit() }
                     .buttonStyle(.glassProminent)
                     .controlSize(.small)
                     .disabled(!canSubmit)
@@ -203,9 +233,41 @@ struct AccountsView: View {
         }
     }
 
-    private var antigravitySection: some View {
+    private func readLocal() {
+        page.wbNote = ""
+        Task {
+            guard let result = await store.readWorkbuddyLocal() else { return }
+            if result.found, let json = result.authJson, !json.isEmpty {
+                page.wbAuthJson = json
+                let who = result.nickname ?? result.uid ?? "account"
+                let source = result.source.map { " from \($0)" } ?? ""
+                page.wbNote = "Loaded \(who)\(source)"
+            }
+        }
+    }
+
+    private func submit() {
+        let auth = page.wbAuthJson.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !auth.isEmpty else { return }
+        Task {
+            if await store.addWorkbuddy(authJson: auth) { page.cancelForms() }
+        }
+    }
+}
+
+struct AntigravitySection: View {
+    let store: AccountsStore
+    @Bindable var page: AccountsPageState
+
+    var body: some View {
+        PanelSection(title: "Antigravity", trailing: AnyView(sectionActions)) {
+            sectionCard
+        }
+    }
+
+    var sectionActions: some View {
         let rows = store.antigravityAccounts
-        return sectionCard("Antigravity", count: rows.count) {
+        return HStack(spacing: 8) {
             Button("Refresh", systemImage: "arrow.clockwise") {
                 Task { await store.refreshAntigravity() }
             }
@@ -217,20 +279,26 @@ struct AccountsView: View {
             }
             .controlSize(.small)
             .disabled(store.busy)
-        } form: {
-            if page.addFor == "antigravity" {
-                antigravityAddForm
-            }
-        } body: {
-            if rows.isEmpty {
-                EmptyState(symbol: "sparkles",
-                           title: "No Antigravity accounts",
-                           message: "Sign in with Google to reach the Gemini, Claude and GPT-OSS models Antigravity advertises for your account.") {
-                    Button("Add Antigravity account") { page.toggleAdd("antigravity") }
+        }
+    }
+
+    var sectionCard: some View {
+        let rows = store.antigravityAccounts
+        return GlassCard(padding: 14) {
+            VStack(alignment: .leading, spacing: 12) {
+                if page.addFor == "antigravity" {
+                    AntigravityAddForm(store: store, page: page)
                 }
-            } else {
-                DataTable(columns: antigravityColumns(rows), rowCount: rows.count, state: page.agTable,
-                          maxHeight: 56 + CGFloat(rows.count) * 30 + 8)
+                if rows.isEmpty {
+                    EmptyState(symbol: "sparkles",
+                               title: "No Antigravity accounts",
+                               message: "Sign in with Google to reach the Gemini, Claude and GPT-OSS models Antigravity advertises for your account.") {
+                        Button("Add Antigravity account") { page.toggleAdd("antigravity") }
+                    }
+                } else {
+                    DataTable(columns: antigravityColumns(rows), rowCount: rows.count, state: page.agTable,
+                              maxHeight: 56 + CGFloat(rows.count) * 30 + 8)
+                }
             }
         }
     }
@@ -238,19 +306,10 @@ struct AccountsView: View {
     private func antigravityColumns(_ rows: [AccountView]) -> [DataColumn] {
         var columns = [
             DataColumn(title: "Account", width: 150) { row in
-                if store.agExpired(rows[row].name) {
-                    return AnyView(HStack(spacing: 4) {
-                        Text(rows[row].name).font(.system(size: 12))
-                        BadgeText(text: "refreshing", tint: .secondary, soft: true)
-                    })
-                }
-                return AnyView(Text(rows[row].name).font(.system(size: 11)).lineLimit(1))
+                AnyView(AntigravityAccountCell(store: store, account: rows[row]))
             },
             DataColumn(title: "Google account", width: 170) { row in
-                AnyView(Text(rows[row].antigravityEmail ?? "—")
-                    .font(.system(size: 11))
-                    .lineLimit(1)
-                    .help(rows[row].antigravityEmail ?? ""))
+                AnyView(MonoCell(text: rows[row].antigravityEmail ?? "—"))
             },
         ]
         let quota = store.agQuota
@@ -264,29 +323,38 @@ struct AccountsView: View {
                                              first: column.key == firstKey)
             }
             columns.append(DataColumn(title: column.header, width: 108, alignsRight: true) { row in
-                quotaCell(content(row), help: column.header)
+                AnyView(QuotaCellView(content: content(row), help: column.header))
             })
         }
         columns.append(DataColumn(title: "Enabled", width: 74) { row in
-            AnyView(enabledToggle(rows[row]))
+            AnyView(AccountEnabledToggle(store: store, account: rows[row]))
         })
         columns.append(DataColumn(title: "Actions", width: 56) { row in
-            AnyView(iconButton("trash", help: "Remove \(rows[row].name)", tint: .red) {
+            AnyView(AccountActionButton(symbol: "trash",
+                                        help: "Remove \(rows[row].name)",
+                                        tint: .red,
+                                        busy: store.busy) {
                 Task { await store.removeAccount(rows[row].name) }
             })
         })
         return columns
     }
+}
 
-    private var antigravityAddForm: some View {
+struct AntigravityAddForm: View {
+    let store: AccountsStore
+    @Bindable var page: AccountsPageState
+
+    var body: some View {
         let canUseCallback = !store.busy && store.agOAuth != nil
             && !page.agCallback.trimmingCharacters(in: .whitespaces).isEmpty
-        return AccountFormBox {
+        AccountFormBox {
             Text("Sign in opens Google in a new tab and catches the redirect on localhost:51121. On a machine without a browser, open the link yourself and paste the whole callback URL back here.")
                 .font(.system(size: 11))
                 .foregroundStyle(.secondary)
-            field("Callback URL (optional)", text: $page.agCallback,
-                  placeholder: "http://localhost:51121/oauth-callback?state=…&code=…", mono: true)
+            MonoField(title: "Callback URL (optional)",
+                      text: $page.agCallback,
+                      placeholder: "http://localhost:51121/oauth-callback?state=…&code=…")
             HStack(spacing: 10) {
                 Button(store.agOAuth == nil ? "Sign in with Google" : "Restart sign-in",
                        systemImage: "sparkles") {
@@ -295,7 +363,7 @@ struct AccountsView: View {
                 .buttonStyle(.glassProminent)
                 .controlSize(.small)
                 .disabled(store.busy)
-                Button("Use pasted callback") { submitAntigravityCallback() }
+                Button("Use pasted callback") { submit() }
                     .controlSize(.small)
                     .disabled(!canUseCallback)
                 Button("Cancel") { page.cancelForms() }
@@ -304,83 +372,7 @@ struct AccountsView: View {
         }
     }
 
-    private func quotaCell(_ content: QuotaCellContent, help: String? = nil) -> AnyView {
-        switch content {
-        case .dash:
-            return AnyView(Text("—").font(RavenFont.numeric(11)).foregroundStyle(.secondary))
-        case .badge(let text, let tip):
-            return AnyView(BadgeText(text: text, tint: .secondary, soft: true).help(tip ?? ""))
-        case .value(let percent, let reset, let title, let fraction):
-            return AnyView(QuotaValue(percent: percent, reset: reset, fraction: fraction)
-                .help(title ?? help ?? ""))
-        }
-    }
-
-    private func enabledToggle(_ account: AccountView) -> some View {
-        Toggle("", isOn: Binding(
-            get: { !(account.disabled ?? false) },
-            set: { on in Task { await store.setEnabled(account, enabled: on) } }))
-        .toggleStyle(.switch)
-        .controlSize(.mini)
-        .labelsHidden()
-        .disabled(store.busy)
-    }
-
-    private func iconButton(_ symbol: String, help: String,
-                            tint: Color = .secondary, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 12))
-                .foregroundStyle(tint)
-                .frame(width: Metrics.minHitTarget, height: Metrics.minHitTarget)
-                .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .help(help)
-        .disabled(store.busy)
-    }
-
-    private func field(_ title: String, text: Binding<String>, secure: Bool = false,
-                       placeholder: String = "", mono: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(.system(size: 11, weight: .medium))
-                .foregroundStyle(.secondary)
-            Group {
-                if secure {
-                    SecureField(placeholder, text: text)
-                } else {
-                    TextField(placeholder, text: text)
-                }
-            }
-            .textFieldStyle(.roundedBorder)
-            .controlSize(.small)
-            .font(mono ? .system(size: 11, design: .monospaced) : .system(size: 11))
-        }
-    }
-
-    private func submitAddWorkbuddy() {
-        let auth = page.wbAuthJson.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !auth.isEmpty else { return }
-        Task {
-            if await store.addWorkbuddy(authJson: auth) { page.cancelForms() }
-        }
-    }
-
-    private func readWorkbuddyLocal() {
-        page.wbNote = ""
-        Task {
-            guard let result = await store.readWorkbuddyLocal() else { return }
-            if result.found, let json = result.authJson, !json.isEmpty {
-                page.wbAuthJson = json
-                let who = result.nickname ?? result.uid ?? "account"
-                let source = result.source.map { " from \($0)" } ?? ""
-                page.wbNote = "Loaded \(who)\(source)"
-            }
-        }
-    }
-
-    private func submitAntigravityCallback() {
+    private func submit() {
         guard let session = store.agOAuth?.session else { return }
         let callback = page.agCallback.trimmingCharacters(in: .whitespaces)
         guard !callback.isEmpty else { return }
@@ -392,16 +384,133 @@ struct AccountsView: View {
     }
 }
 
-struct AccountFormBox<Content: View>: View {
-    @ViewBuilder var content: Content
+struct AccountCell: View {
+    let name: String
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            content
+        Text(name).font(.system(size: 11))
+    }
+}
+
+struct MonoCell: View {
+    let text: String
+
+    var body: some View {
+        Text(text)
+            .font(RavenFont.mono(11))
+            .lineLimit(1)
+            .help(text)
+    }
+}
+
+struct CreditsCell: View {
+    let store: AccountsStore
+    let uid: String?
+
+    var body: some View {
+        let status = uid.flatMap { store.wbStatusByUid($0) }
+        if let status {
+            if status.cooling {
+                BadgeText(text: coolingText(status), tint: .secondary, soft: true)
+                    .help(status.reason ?? "")
+            } else {
+                Text(AccountQuota.creditsText(status.credits))
+                    .font(RavenFont.numeric(11))
+            }
+        } else {
+            Text("—").font(RavenFont.numeric(11))
         }
-        .padding(Metrics.spacing3)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 10))
-        .overlay { RoundedRectangle(cornerRadius: 10).strokeBorder(.separator, lineWidth: 1) }
+    }
+
+    private func coolingText(_ status: WorkbuddyAccountStatus) -> String {
+        guard let left = status.coolRemainingSec, left > 0 else { return "cooling" }
+        return "cooling · \(left / 60):\(String(format: "%02d", left % 60))"
+    }
+}
+
+struct AntigravityAccountCell: View {
+    let store: AccountsStore
+    let account: AccountView
+
+    var body: some View {
+        if store.agExpired(account.name) {
+            HStack(spacing: 4) {
+                Text(account.name).font(.system(size: 12))
+                BadgeText(text: "refreshing", tint: .secondary, soft: true)
+            }
+        } else {
+            Text(account.name).font(.system(size: 11)).lineLimit(1)
+        }
+    }
+}
+
+struct QuotaCellView: View {
+    let content: QuotaCellContent
+    var help: String?
+
+    var body: some View {
+        switch content {
+        case .dash:
+            Text("—").font(RavenFont.numeric(11)).foregroundStyle(.secondary)
+        case .badge(let text, let tip):
+            BadgeText(text: text, tint: .secondary, soft: true).help(tip ?? "")
+        case .value(let percent, let reset, let title, let fraction):
+            QuotaValue(percent: percent, reset: reset, fraction: fraction)
+                .help(title ?? help ?? "")
+        }
+    }
+}
+
+struct AccountEnabledToggle: View {
+    let store: AccountsStore
+    let account: AccountView
+
+    var body: some View {
+        Toggle("", isOn: Binding(
+            get: { !(account.disabled ?? false) },
+            set: { on in Task { await store.setEnabled(account, enabled: on) } }))
+        .toggleStyle(.switch)
+        .controlSize(.mini)
+        .labelsHidden()
+        .disabled(store.busy)
+    }
+}
+
+struct AccountActionButton: View {
+    let symbol: String
+    let help: String
+    var tint: Color = .secondary
+    var busy = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: symbol)
+                .font(.system(size: 12))
+                .foregroundStyle(tint)
+                .frame(width: Metrics.minHitTarget, height: Metrics.minHitTarget)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .help(help)
+        .disabled(busy)
+    }
+}
+
+struct MonoField: View {
+    let title: String
+    @Binding var text: String
+    var placeholder: String = ""
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(.system(size: 11, weight: .medium))
+                .foregroundStyle(.secondary)
+            TextField(placeholder, text: $text)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .font(.system(size: 11, design: .monospaced))
+        }
     }
 }

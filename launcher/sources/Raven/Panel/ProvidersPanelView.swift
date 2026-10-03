@@ -6,6 +6,9 @@ struct ProvidersPanelView: View {
 
     var body: some View {
         PanelPage {
+            PanelPageHeader(title: "Models",
+                            subtitle: routingSummary,
+                            icon: "square.stack.3d.up.fill")
             PanelNotice(message: store.error)
             saveStatus
             if store.loading || store.providers == nil {
@@ -29,6 +32,13 @@ struct ProvidersPanelView: View {
         } message: { _ in
             Text("Its models and API keys are dropped from the routing doc on save.")
         }
+    }
+
+    private var routingSummary: String? {
+        guard let providers = store.providers else { return nil }
+        let pinned = providers.reduce(0) { $0 + $1.models.count }
+        let active = providers.filter { $0.disabled != true }.count
+        return "\(providers.count) provider\(providers.count == 1 ? "" : "s") · \(active) active · \(pinned) model\(pinned == 1 ? "" : "s") pinned"
     }
 
     private var removalBinding: Binding<Bool> {

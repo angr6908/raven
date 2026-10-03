@@ -43,6 +43,9 @@ struct PricingView: View {
 
     var body: some View {
         PanelPage {
+            PanelPageHeader(title: "Pricing",
+                            subtitle: pricingSummary,
+                            icon: "tag")
             PanelNotice(message: store.error ?? saveFailure)
             if store.loading {
                 RavenLoader(message: "Loading prices…").frame(height: 160)
@@ -52,6 +55,16 @@ struct PricingView: View {
             }
         }
         .onAppear { store.refresh() }
+    }
+
+    private var pricingSummary: String? {
+        guard !store.loading else { return nil }
+        let all = rows
+        guard !all.isEmpty else { return nil }
+        let unpriced = all.filter { !$0.priced && $0.inLog }.count
+        return unpriced > 0
+            ? "\(all.count) models · \(unpriced) in use without prices"
+            : "\(all.count) models · all used models priced"
     }
 
     private var saveFailure: String? {

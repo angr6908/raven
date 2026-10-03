@@ -40,24 +40,20 @@ struct UsageView: View {
 
     var body: some View {
         PanelPage {
+            PanelPageHeader(title: "Usage",
+                            subtitle: store.records.isEmpty
+                                ? nil
+                                : "\(store.records.count) requests · \(PanelAggregation.byModel(store.records).count) models",
+                            icon: "list.bullet.rectangle")
             PanelNotice(message: store.error ?? page.notice)
 
-            sectionHeader("Usage by model")
-            modelTable
-
-            sectionHeader("Request log") {
-                HStack(spacing: 8) {
-                    TextField("Filter by model…", text: $page.requestTable.query)
-                        .textFieldStyle(.roundedBorder)
-                        .controlSize(.small)
-                        .frame(width: 180)
-                    Button("Clear") { clearLog() }
-                        .controlSize(.small)
-                        .foregroundStyle(.red)
-                        .disabled(store.records.isEmpty || page.isClearing)
-                }
+            PanelSection(title: "Usage by model") {
+                modelTable
             }
-            requestTable
+
+            PanelSection(title: "Request log", trailing: requestControls) {
+                requestTable
+            }
         }
         .onAppear {
             page.refreshProviderIndex()
@@ -65,19 +61,17 @@ struct UsageView: View {
         }
     }
 
-    private func sectionHeader<Trailing: View>(_ title: String,
-                                               @ViewBuilder trailing: () -> Trailing) -> some View {
-        HStack(spacing: 8) {
-            Text(title)
-                .font(.system(size: 14, weight: .semibold))
-            Spacer(minLength: 8)
-            trailing()
-        }
-    }
-
-    private func sectionHeader(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 14, weight: .semibold))
+    private var requestControls: AnyView {
+        AnyView(HStack(spacing: 8) {
+            TextField("Filter by model…", text: $page.requestTable.query)
+                .textFieldStyle(.roundedBorder)
+                .controlSize(.small)
+                .frame(width: 180)
+            Button("Clear") { clearLog() }
+                .controlSize(.small)
+                .foregroundStyle(.red)
+                .disabled(store.records.isEmpty || page.isClearing)
+        })
     }
 
     private func clearLog() {

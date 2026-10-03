@@ -95,12 +95,6 @@ struct RavenCommands: Commands {
                 .keyboardShortcut("8", modifiers: .command)
 
             Divider()
-
-            Button(shell.inspectorShown ? "Hide Launch Panel" : "Show Launch Panel") {
-                shell.inspectorShown.toggle()
-            }
-            .keyboardShortcut("l", modifiers: [.command, .shift])
-            .disabled(!workspace.destination.isLauncherPage || store.providers.isEmpty)
         }
     }
 

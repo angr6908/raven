@@ -14,6 +14,11 @@ struct OverviewView: View {
 
     var body: some View {
         PanelPage {
+            PanelPageHeader(title: "Overview",
+                            subtitle: store.error == nil && !store.records.isEmpty
+                                ? "Last \(store.records.count) requests through the proxy"
+                                : nil,
+                            icon: "chart.bar.xaxis")
             PanelNotice(message: store.error)
 
             if store.records.isEmpty {
@@ -55,22 +60,26 @@ struct OverviewView: View {
                      label: "Total tokens",
                      value: PanelFormats.formatTokens(t.total),
                      sub: "\(PanelFormats.formatTokens(t.input)) in · \(PanelFormats.formatTokens(t.output)) out",
-                     badge: nil)
+                     badge: nil,
+                     tint: .blue)
             StatTile(icon: "bolt.fill",
                      label: "Requests",
                      value: String(t.requests),
                      sub: "\(t.usedModels) model\(t.usedModels == 1 ? "" : "s") used",
-                     badge: nil)
+                     badge: nil,
+                     tint: .orange)
             StatTile(icon: "dollarsign.circle.fill",
                      label: "Est. cost",
                      value: PanelFormats.formatCost(t.cost),
                      sub: nil,
-                     badge: "\(PanelFormats.formatPercent(t.cacheRate)) cache hit rate")
+                     badge: "\(PanelFormats.formatPercent(t.cacheRate)) cache hit rate",
+                     tint: .green)
             StatTile(icon: "gauge.with.dots.needle.67percent",
                      label: "Duration",
                      value: PanelFormats.formatDuration(t.avgLatency),
                      sub: "avg TTFT \(PanelFormats.formatDuration(t.avgTTFT))",
-                     badge: nil)
+                     badge: nil,
+                     tint: .purple)
         }
     }
 

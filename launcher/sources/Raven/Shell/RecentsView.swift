@@ -11,18 +11,20 @@ struct RecentsView: View {
                            title: "No launches yet",
                            message: "Every model you launch shows up here so you can pick up where you left off.")
             } else if workspace.visibleRecents.isEmpty {
-                EmptyState(symbol: "magnifyingglass",
-                           title: "No matches",
-                           message: "No launches match “\(workspace.search)”.")
+                RecentsNoMatches(search: workspace.search)
             } else {
-                list
+                RecentsList(recents: workspace.visibleRecents, store: store, workspace: workspace)
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .safeAreaInset(edge: .top, spacing: 0) { toolbar }
+        .safeAreaInset(edge: .top, spacing: 0) { RecentsToolbar(store: store) }
     }
+}
 
-    private var toolbar: some View {
+struct RecentsToolbar: View {
+    let store: ProviderStore
+
+    var body: some View {
         HStack {
             Spacer()
             Button {
@@ -38,16 +40,33 @@ struct RecentsView: View {
         .padding(.horizontal, Metrics.spacing5)
         .padding(.vertical, Metrics.spacing2)
     }
+}
 
-    private var list: some View {
+struct RecentsNoMatches: View {
+    let search: String
+
+    var body: some View {
+        EmptyState(symbol: "magnifyingglass",
+                   title: "No matches",
+                   message: "No launches match “\(search)”.")
+    }
+}
+
+struct RecentsList: View {
+    let recents: [RecentLaunch]
+    let store: ProviderStore
+    let workspace: Workspace
+
+    var body: some View {
         ScrollView {
             LazyVStack(spacing: 0) {
-                ForEach(workspace.visibleRecents) { recent in
+                ForEach(recents) { recent in
                     RecentRowView(recent: recent, store: store, workspace: workspace)
                 }
             }
             .padding(.vertical, Metrics.spacing2)
         }
+        .swipeActionsContainer()
     }
 }
 
@@ -56,11 +75,28 @@ struct RecentRowView: View {
     let store: ProviderStore
     let workspace: Workspace
 
-    private static let relative: RelativeDateTimeFormatter = {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .abbreviated
-        return formatter
-    }()
+    var body: some View {
+        RecentRowContent(recent: recent,
+                         provider: store.provider(id: recent.providerID),
+                         workspace: workspace)
+            .swipeActions(edge: .trailing, allowsFullSwipe: true) {
+                Button { workspace.relaunch(recent) } label: {
+                    Label("Launch Again", systemImage: "play.fill")
+                }
+                .tint(.accentColor)
+                Button { workspace.restore(recent) } label: {
+                    Label("Restore", systemImage: "arrow.uturn.backward")
+                }
+                .tint(.secondary)
+            }
+            .contextMenu { RecentRowMenu(recent: recent, workspace: workspace) }
+    }
+}
+
+struct RecentRowContent: View {
+    let recent: RecentLaunch
+    let provider: Provider?
+    let workspace: Workspace
 
     var body: some View {
         HStack(spacing: 10) {
@@ -81,7 +117,7 @@ struct RecentRowView: View {
 
             Spacer(minLength: 10)
 
-            Text(Self.relative.localizedString(for: recent.date, relativeTo: .now))
+            Text(recent.date, format: .relative(presentation: .named))
                 .font(RavenFont.caption)
                 .foregroundStyle(.secondary)
 
@@ -100,13 +136,17 @@ struct RecentRowView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .contentShape(Rectangle())
         .help(recent.workdir)
-        .contextMenu {
-            Button("Launch Again") { workspace.relaunch(recent) }
-            Button("Restore Selection") { workspace.restore(recent) }
-            Divider()
-            Button("Copy Model ID") { workspace.copy(recent.modelID) }
-        }
     }
+}
 
-    private var provider: Provider? { store.provider(id: recent.providerID) }
+struct RecentRowMenu: View {
+    let recent: RecentLaunch
+    let workspace: Workspace
+
+    var body: some View {
+        Button("Launch Again") { workspace.relaunch(recent) }
+        Button("Restore Selection") { workspace.restore(recent) }
+        Divider()
+        Button("Copy Model ID") { workspace.copy(recent.modelID) }
+    }
 }
