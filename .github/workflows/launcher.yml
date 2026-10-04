@@ -10,6 +10,10 @@ on:
     paths:
       - app/macos/**
       - .github/workflows/launcher.yml
+  workflow_run:
+    workflows: [core]
+    types: [completed]
+    branches: [main]
   workflow_dispatch:
 
 concurrency:
@@ -17,10 +21,35 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
-  build:
-    runs-on: xcode-27
+  core:
+    if: github.event_name != 'workflow_run' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
     permissions:
       contents: read
+    outputs:
+      ready: ${{ steps.match.outputs.ready }}
+      sha: ${{ steps.match.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Match published core to this commit
+        id: match
+        run: |
+          git fetch --no-tags --depth=1 origin +refs/tags/core-latest:refs/tags/core-latest
+          echo "sha=$(git rev-parse 'core-latest^{commit}')" >> "$GITHUB_OUTPUT"
+          if [ "$GITHUB_EVENT_NAME" = pull_request ] || [ "$(git rev-parse HEAD:core)" = "$(git rev-parse core-latest:core)" ]; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::core-latest was built from different core sources; the launcher builds after the core workflow publishes"
+          fi
+
+  build:
+    needs: core
+    if: needs.core.outputs.ready == 'true'
+    runs-on: xcode-27
+    permissions:
+      contents: write
     defaults:
       run:
         working-directory: app/macos
@@ -32,7 +61,10 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          gh release download core-latest --pattern raven-core-macos-arm64.tar.gz --dir "$RUNNER_TEMP/core"
+          for attempt in 1 2 3 4 5; do
+            gh release download core-latest --pattern raven-core-macos-arm64.tar.gz --dir "$RUNNER_TEMP/core" --clobber && break
+            sleep 10
+          done
           tar -xzf "$RUNNER_TEMP/core/raven-core-macos-arm64.tar.gz" -C "$RUNNER_TEMP/core"
 
       - run: swift build -c release
@@ -41,9 +73,40 @@ jobs:
         env:
           CORE_BIN: ${{ runner.temp }}/core/raven
 
-      - run: ditto -c -k --keepParent build/Raven.app build/Raven-macos-arm64.zip
+      - name: Make DMG
+        run: |
+          rm -rf build/dmg build/Raven.dmg
+          mkdir -p build/dmg
+          ditto build/Raven.app build/dmg/Raven.app
+          ln -s /Applications build/dmg/Applications
+          for attempt in 1 2 3 4 5; do
+            hdiutil create -volname Raven -srcfolder build/dmg -fs APFS -format UDZO -ov build/Raven.dmg && break
+            sleep 10
+          done
+          [ -f build/Raven.dmg ]
 
       - uses: actions/upload-artifact@v7
         with:
           name: Raven-macos-arm64
-          path: app/macos/build/Raven-macos-arm64.zip
+          path: app/macos/build/Raven.dmg
+
+      - name: Publish launcher-latest
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          CORE_SHA: ${{ needs.core.outputs.sha }}
+        run: |
+          cat > "$RUNNER_TEMP/notes.md" <<EOF
+          Built from $GITHUB_SHA with core $CORE_SHA.
+
+          Open Raven.dmg and drag Raven to Applications. The app is not notarized, so clear the download quarantine once before the first launch:
+
+              xattr -dr com.apple.quarantine /Applications/Raven.app
+          EOF
+          git tag -f launcher-latest "$GITHUB_SHA"
+          git push -f origin refs/tags/launcher-latest
+          gh release view launcher-latest >/dev/null 2>&1 \
+            || gh release create launcher-latest --title "Raven (latest)" --latest --notes ""
+          gh release edit launcher-latest --latest --notes-file "$RUNNER_TEMP/notes.md"
+          gh release upload launcher-latest build/Raven.dmg --clobber
