@@ -1,0 +1,56 @@
+name: core
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - core/**
+      - .github/workflows/core.yml
+  pull_request:
+    paths:
+      - core/**
+      - .github/workflows/core.yml
+  workflow_dispatch:
+
+concurrency:
+  group: core-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: macos-26
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: core
+    steps:
+      - uses: actions/checkout@v7
+
+      - run: rustup toolchain install stable --profile minimal && rustup default stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: core
+
+      - run: cargo build --release --locked
+
+      - run: tar -czf raven-core-macos-arm64.tar.gz -C target/release raven
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: raven-core-macos-arm64
+          path: core/raven-core-macos-arm64.tar.gz
+
+      - name: Publish core-latest
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          git tag -f core-latest "$GITHUB_SHA"
+          git push -f origin refs/tags/core-latest
+          gh release view core-latest >/dev/null 2>&1 \
+            || gh release create core-latest --title "Core (latest)" --prerelease --notes ""
+          gh release edit core-latest --notes "Built from $GITHUB_SHA"
+          gh release upload core-latest raven-core-macos-arm64.tar.gz --clobber
