@@ -20,6 +20,10 @@ enum ModelsClient {
         let bare = provider.rootURL + "/models"
         if bare != candidates[0] { candidates.append(bare) }
 
+        if provider.rootURL.hasPrefix(LocalProxy.baseURL) {
+            await CoreProcess.shared.waitUntilReady()
+        }
+
         var lastError: Error = ModelsClientError.badURL
         for url in candidates {
             do {

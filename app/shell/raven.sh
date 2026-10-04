@@ -32,8 +32,8 @@
 # fires — nothing here caps what raven forwards upstream.
 #
 # Default combination: typing 0 in the client or model picker walks through
-# choosing a client + model and saves the pair to defaults.conf; a blank reply
-# in either picker then launches that pair. RAVEN_DEFAULT_CLIENT and
+# choosing a client + model and saves the pair to data/shell-defaults.conf; a
+# blank reply in either picker then launches that pair. RAVEN_DEFAULT_CLIENT and
 # RAVEN_DEFAULT_MODEL env vars outrank the saved file on read.
 
 set -euo pipefail
@@ -60,6 +60,7 @@ while [ -L "$SELF" ]; do
   esac
 done
 APP_DIR="$(cd "$(dirname "$SELF")" && pwd)"
+ROOT_DIR="$(cd "$APP_DIR/../.." && pwd)"
 cd "$APP_DIR"
 
 PROXY_URL="${PROXY_URL:-http://127.0.0.1:3458}"
@@ -84,9 +85,10 @@ esac
 
 # The default combination is the client + model a blank reply to the client and
 # model pickers launches. Option 0 in either menu ("Set default combination")
-# rewrites defaults.conf to a new pair and the launch continues with it. Env
-# vars RAVEN_DEFAULT_CLIENT / RAVEN_DEFAULT_MODEL outrank the file on read.
-DEFAULTS="$APP_DIR/defaults.conf"
+# rewrites data/shell-defaults.conf to a new pair and the launch continues with
+# it. Env vars RAVEN_DEFAULT_CLIENT / RAVEN_DEFAULT_MODEL outrank the file on
+# read.
+DEFAULTS="$ROOT_DIR/data/shell-defaults.conf"
 
 load_defaults() {
   DEF_CLIENT="${RAVEN_DEFAULT_CLIENT:-}"
@@ -429,7 +431,7 @@ grok_real_home_anchor() {
       end
     end
     out = blocks.flatten
-    # Keep the default model in step with the launcher defaults.conf.
+    # Keep the default model in step with data/shell-defaults.conf.
     set_default = lambda do |m|
       idx = out.index { |l| l =~ /^\s*\[models\]\s*$/ }
       unless idx
@@ -456,7 +458,7 @@ grok_real_home_anchor() {
 # and models.yml references it via a `!cmd` that re-reads it on every launch —
 # so the generated store never carries a copy of the secret, and a fresh key is
 # picked up without a rewrite. $1 is the comma-separated model list to publish.
-KEYFILE="${PROXY_KEY_FILE:-$APP_DIR/.raven-key}"
+KEYFILE="${PROXY_KEY_FILE:-$ROOT_DIR/data/.raven-key}"
 write_keyfile() {
   umask 077
   printf '%s\n' "$PROXY_KEY" > "$KEYFILE"
@@ -481,7 +483,8 @@ session_meta() {
 }
 
 # Walk the client and model pickers to choose a new default combination, persist
-# it to defaults.conf, and set CLIENT/MODEL so the launch continues with it.
+# it to data/shell-defaults.conf, and set CLIENT/MODEL so the launch continues
+# with it.
 edit_defaults() {
   # The client menu. A blank reply keeps a client that is already default.
   bold "Edit default"
@@ -521,6 +524,7 @@ edit_defaults() {
   fi
   # Store the pair. Writing the file is what makes the defaults sticky: a blank
   # reply in the client/model pickers of a later launch uses it.
+  mkdir -p "${DEFAULTS%/*}"
   printf 'client=%s\nmodel=%s\n' "$CLIENT" "$MODEL" > "$DEFAULTS"
   DEF_CLIENT="$CLIENT"
   DEF_MODEL="$MODEL"
@@ -914,9 +918,9 @@ else
   # launch is covered, then point Codex at it for this run only — nothing in
   # ~/.codex is touched. A failure here is not worth blocking a launch over:
   # the last good catalog is used if one exists, otherwise Codex just warns.
-  CODEX_CATALOG="$APP_DIR/data/codex-models.json"
+  CODEX_CATALOG="$ROOT_DIR/data/codex-models.json"
   if command -v bun >/dev/null 2>&1; then
-    bun "$APP_DIR/scripts/codex-model-catalog.mjs" \
+    bun "$APP_DIR/codex-model-catalog.mjs" \
       --base-url "$PROXY_URL/v1" --api-key "$PROXY_KEY" --out "$CODEX_CATALOG" \
       --default-context "$FALLBACK_CTX_WINDOW" \
       >/dev/null 2>&1 || echo "raven: could not refresh the Codex model catalog; using the last one" >&2

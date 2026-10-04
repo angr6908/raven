@@ -87,14 +87,14 @@ struct OverviewPage: View {
                         Section { Notice(message: error) }
                     }
                     metrics
-                    chartSection("Token Usage", note: "Input and output tokens per hour",
+                    chartSection("Token Usage",
                                  legend: [("Input", Palette.input), ("Output", Palette.output)]) {
                         SeriesChart(kind: .tokens, points: snapshot.series, selected: $selected, height: 220)
                     }
-                    chartSection("Cost", note: "Estimated spend per hour in USD", legend: []) {
+                    chartSection("Cost", legend: []) {
                         SeriesChart(kind: .cost, points: snapshot.series, selected: $selected, height: 160)
                     }
-                    chartSection("Requests", note: "Calls per hour, successful and failed", legend: []) {
+                    chartSection("Requests", legend: []) {
                         SeriesChart(kind: .requests, points: snapshot.series, selected: $selected, height: 160)
                     }
                     topModels
@@ -154,7 +154,7 @@ struct OverviewPage: View {
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private func chartSection<Content: View>(_ title: String, note: String, legend: [(String, Color)],
+    private func chartSection<Content: View>(_ title: String, legend: [(String, Color)],
                                              @ViewBuilder content: () -> Content) -> some View {
         Section {
             content()
@@ -169,8 +169,6 @@ struct OverviewPage: View {
                     }
                 }
             }
-        } footer: {
-            Text(note)
         }
     }
 
@@ -196,8 +194,6 @@ struct OverviewPage: View {
             .frame(height: CGFloat(max(ranked.count, 1)) * 32 + 8)
         } header: {
             Text("Top Models")
-        } footer: {
-            Text("Busiest models in this range")
         }
     }
 

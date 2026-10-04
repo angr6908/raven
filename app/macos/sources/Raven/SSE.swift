@@ -108,6 +108,7 @@ final class UsageStream {
         guard let url = URL(string: LocalProxy.baseURL + "/api/usage/stream") else { return false }
         var request = URLRequest(url: url)
         request.timeoutInterval = 120
+        await CoreProcess.shared.waitUntilReady()
         do {
             let (bytes, response) = try await URLSession.shared.bytes(for: request)
             guard let http = response as? HTTPURLResponse, http.statusCode == 200 else { return false }

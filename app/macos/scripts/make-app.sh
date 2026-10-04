@@ -9,6 +9,10 @@ PARTIAL="$APP_DIR/build/icon-partial.plist"
 ACTOOL="/Applications/Xcode.app/Contents/Developer/usr/bin/actool"
 ICON="$APP_DIR/resources/AppIcon.icon"
 
+CORE_DIR="$(cd "$APP_DIR/../../core" && pwd)"
+(cd "$CORE_DIR" && cargo build --release)
+CORE_BIN="$CORE_DIR/target/release/raven"
+
 [ -x "$BUILD" ] || { echo "error: run 'swift build -c release' first" >&2; exit 1; }
 [ -x "$ACTOOL" ] || { echo "error: Xcode actool is required" >&2; exit 1; }
 
@@ -18,6 +22,7 @@ rm -rf "$BUNDLE"
 mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 
 cp "$BUILD" "$BUNDLE/Contents/MacOS/Raven"
+cp "$CORE_BIN" "$BUNDLE/Contents/Resources/raven"
 cp -R "$APP_DIR/resources/Logos" "$BUNDLE/Contents/Resources/Logos"
 
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
@@ -55,5 +60,6 @@ with dest.open("wb") as handle:
     plistlib.dump(info, handle)
 PY
 
+codesign --force --sign - "$BUNDLE/Contents/Resources/raven"
 codesign --force --sign - "$BUNDLE"
 echo "Built $BUNDLE"

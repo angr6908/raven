@@ -75,6 +75,7 @@ nonisolated struct PanelClient {
             request.httpBody = body
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
+        await CoreProcess.shared.waitUntilReady()
         let data: Data
         let response: URLResponse
         do {

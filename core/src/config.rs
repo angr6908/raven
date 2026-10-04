@@ -8,6 +8,7 @@ pub struct Config {
     pub address: String,
     pub data_dir: PathBuf,
     pub static_dir: PathBuf,
+    pub exit_on_stdin_close: bool,
 }
 
 struct Flags {
@@ -16,6 +17,7 @@ struct Flags {
     work_dir: String,
     data_dir: String,
     static_dir: String,
+    exit_on_stdin_close: bool,
     version: bool,
 }
 
@@ -35,7 +37,7 @@ impl Config {
             false => PathBuf::from(flags.data_dir),
         };
         let static_dir = match flags.static_dir.is_empty() {
-            true => work_dir.join("app").join("dist"),
+            true => work_dir.join("app").join("web").join("dist"),
             false => PathBuf::from(flags.static_dir),
         };
 
@@ -43,6 +45,7 @@ impl Config {
             address: format!("{}:{}", flags.host, flags.port),
             data_dir,
             static_dir,
+            exit_on_stdin_close: flags.exit_on_stdin_close,
         }))
     }
 }
@@ -54,6 +57,7 @@ fn parse(args: Vec<String>) -> Result<Flags, String> {
         work_dir: String::new(),
         data_dir: String::new(),
         static_dir: String::new(),
+        exit_on_stdin_close: false,
         version: false,
     };
 
@@ -62,6 +66,11 @@ fn parse(args: Vec<String>) -> Result<Flags, String> {
         let arg = args[index].clone();
         if arg == "--version" || arg == "-version" {
             flags.version = true;
+            index += 1;
+            continue;
+        }
+        if arg == "--exit-on-stdin-close" || arg == "-exit-on-stdin-close" {
+            flags.exit_on_stdin_close = true;
             index += 1;
             continue;
         }
@@ -136,7 +145,7 @@ mod tests {
     fn static_dir_defaults_under_the_work_dir() {
         assert_eq!(
             config(&["-working-dir", "/w"]).static_dir,
-            PathBuf::from("/w/app/dist")
+            PathBuf::from("/w/app/web/dist")
         );
         assert_eq!(
             config(&["-working-dir", "/w", "-static-dir", "/x/dist"]).static_dir,

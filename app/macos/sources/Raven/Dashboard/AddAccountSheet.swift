@@ -41,8 +41,6 @@ struct AddAccountSheet: View {
             .disabled(store.busy || store.wbOAuth != nil)
         } header: {
             Text("Browser")
-        } footer: {
-            Text("Opens the WorkBuddy login in your browser and finishes automatically.")
         }
 
         Section {
@@ -78,8 +76,6 @@ struct AddAccountSheet: View {
             .disabled(store.busy)
         } header: {
             Text("Google")
-        } footer: {
-            Text("Opens Google in your browser and catches the redirect on localhost:51121.")
         }
 
         Section {

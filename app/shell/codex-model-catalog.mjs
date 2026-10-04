@@ -18,7 +18,7 @@
 // The catalog is written inside this repo and nothing outside it is touched —
 // point Codex at it per launch, so no global config is involved:
 //
-//   bun scripts/codex-model-catalog.mjs
+//   bun app/shell/codex-model-catalog.mjs
 //   codex -c model_catalog_json=<repo>/data/codex-models.json ...
 //
 // Re-run after adding a provider or model. `--out` overrides the location, and
@@ -38,7 +38,7 @@ for (let i = 2; i < process.argv.length; i += 2) {
   args.set(process.argv[i].replace(/^--/, ""), process.argv[i + 1])
 }
 
-const root = path.dirname(import.meta.dir)
+const root = path.resolve(import.meta.dir, "../..")
 const template = args.get("template") ?? DEFAULT_TEMPLATE
 const baseUrl = args.get("base-url") ?? "http://127.0.0.1:3458/v1"
 const out = args.get("out") ?? path.join(root, "data", "codex-models.json")
@@ -162,7 +162,7 @@ function buildEntry(base, model, efforts) {
   return entry
 }
 
-const keyFile = path.join(root, ".raven-key")
+const keyFile = path.join(root, "data", ".raven-key")
 const apiKey = args.get("api-key") ?? (existsSync(keyFile) ? readFileSync(keyFile, "utf8").trim() : "")
 
 const catalog = extractBuiltinCatalog(findCodex())

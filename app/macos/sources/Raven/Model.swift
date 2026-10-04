@@ -261,5 +261,6 @@ nonisolated enum ContextWindow {
 
 nonisolated enum LocalProxy {
     static let name = "Raven"
-    static let baseURL = "http://127.0.0.1:3458"
+    static let port: UInt16 = 3458
+    static let baseURL = "http://127.0.0.1:\(port)"
 }

@@ -100,8 +100,6 @@ private struct DataSettings: View {
                 LabeledContent("Configuration file") {
                     Button("Show in Finder") { app.revealConfig() }
                 }
-            } footer: {
-                Text("Providers, keys and preferences live in \(ProviderStore.configFile.path(percentEncoded: false)).")
             }
         }
         .formStyle(.grouped)

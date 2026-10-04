@@ -13,7 +13,7 @@ pub fn router(dir: &Path) -> Option<Router> {
     let index = dir.join("index.html");
     if !index.is_file() {
         eprintln!(
-            "panel: no index.html in {} — not serving the panel (dev mode: `cd app && bun run dev`)",
+            "panel: no index.html in {} — not serving the panel (dev mode: `cd app/web && bun run dev`)",
             dir.display()
         );
         return None;

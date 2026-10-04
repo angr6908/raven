@@ -5,6 +5,10 @@ struct RavenApp: App {
     @NSApplicationDelegateAdaptor(RavenLifecycle.self) private var lifecycle
     @State private var model = AppModel(store: .shared)
 
+    init() {
+        CoreProcess.shared.start()
+    }
+
     var body: some Scene {
         Window("Raven", id: "main") {
             RootView()

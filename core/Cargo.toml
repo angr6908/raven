@@ -16,7 +16,7 @@ sha2 = "0.10"
 hex = "0.4"
 base64 = "0.22"
 tokio = { version = "1", features = ["full"] }
-# `fs` for ServeDir/ServeFile: the proxy serves the built panel (app/dist) itself.
+# `fs` for ServeDir/ServeFile: the proxy serves the built panel (app/web/dist) itself.
 tower-http = { version = "0.6", features = ["fs"] }
 # Antigravity fingerprints the TLS ClientHello: the reference executor sends no
 # ALPN extension at all, so the Antigravity client is built from a

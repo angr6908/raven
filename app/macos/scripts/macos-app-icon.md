@@ -28,7 +28,7 @@ Required tools:
 Source of truth:
 
 ```
-launcher/resources/AppIcon.icon/
+app/macos/resources/AppIcon.icon/
   icon.json
   Assets/Raven.svg
 ```
@@ -46,8 +46,8 @@ Raven.app/Contents/Info.plist
 Preview exports (not the app icon themselves):
 
 ```
-launcher/build/icon-light.png
-launcher/build/icon-dark.png
+app/macos/build/icon-light.png
+app/macos/build/icon-dark.png
 ```
 
 Those PNGs are Icon Composer flattened renders of Default and Dark. They
@@ -56,7 +56,7 @@ already include the system squircle. Never composite them back into the
 
 ## Reproduce this icon
 
-From `launcher/`:
+From `app/macos/`:
 
 ```bash
 python3 scripts/generate-app-icon.py
@@ -95,12 +95,12 @@ Constants locked in `generate-app-icon.py`:
 
 ```bash
 ICTOOL="/Applications/Icon Composer.app/Contents/Executables/ictool"
-ICON=launcher/resources/AppIcon.icon
+ICON=app/macos/resources/AppIcon.icon
 
-"$ICTOOL" "$ICON" --export-image --output-file launcher/build/icon-light.png \
+"$ICTOOL" "$ICON" --export-image --output-file app/macos/build/icon-light.png \
   --platform macOS --rendition Default --width 1024 --height 1024 --scale 1
 
-"$ICTOOL" "$ICON" --export-image --output-file launcher/build/icon-dark.png \
+"$ICTOOL" "$ICON" --export-image --output-file app/macos/build/icon-dark.png \
   --platform macOS --rendition Dark --width 1024 --height 1024 --scale 1
 ```
 
@@ -112,12 +112,12 @@ ICON=launcher/resources/AppIcon.icon
 
 ```bash
 export DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer
-actool launcher/resources/AppIcon.icon \
+actool app/macos/resources/AppIcon.icon \
   --compile Raven.app/Contents/Resources \
   --platform macosx \
   --minimum-deployment-target 27.0 \
   --app-icon AppIcon \
-  --output-partial-info-plist launcher/build/icon-partial.plist
+  --output-partial-info-plist app/macos/build/icon-partial.plist
 ```
 
 Merge `CFBundleIconName` / `CFBundleIconFile` from the partial plist into
@@ -127,7 +127,7 @@ Merge `CFBundleIconName` / `CFBundleIconFile` from the partial plist into
    Finder caches icons; `touch` the app and
    `lsregister -f Raven.app`, or relaunch Finder, if the old icon sticks.
 
-End-to-end: `swift build -c release` then `launcher/scripts/make-app.sh`.
+End-to-end: `swift build -c release` then `app/macos/scripts/make-app.sh`.
 
 ## `icon.json` (current)
 
@@ -171,7 +171,7 @@ Color strings are `display-p3:r,g,b,a` or `extended-gray:white,alpha`.
 Do not paste a one-off snippet. Run:
 
 ```bash
-python3 launcher/scripts/generate-app-icon.py
+python3 app/macos/scripts/generate-app-icon.py
 ```
 
 That script is the locked transform: 1024 canvas, 64% glyph, 8pt lift,
