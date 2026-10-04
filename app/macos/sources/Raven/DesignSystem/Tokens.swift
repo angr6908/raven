@@ -56,16 +56,6 @@ extension Provider {
     }
 }
 
-extension ProviderStatus {
-    var tint: Color {
-        switch self {
-        case .failed: .red
-        case .ready: .green
-        case .loading, .empty: .secondary
-        }
-    }
-}
-
 enum Palette {
     static let input = Color.indigo
     static let output = Color.mint

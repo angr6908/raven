@@ -56,7 +56,6 @@ nonisolated struct DynamicCodingKey: CodingKey {
 }
 
 nonisolated struct UsageListResponse: Decodable {
-    var object: String?
     var data: [UsageRecord]
 }
 
@@ -65,12 +64,10 @@ nonisolated struct UsageRecord: Codable, Identifiable, Equatable {
         nonisolated struct Input: Codable, Equatable {
             var totalTokens: Int
             var cacheReadTokens: Int
-            var cacheWriteTokens: Int
 
             enum CodingKeys: String, CodingKey {
                 case totalTokens = "total_tokens"
                 case cacheReadTokens = "cache_read_tokens"
-                case cacheWriteTokens = "cache_write_tokens"
             }
         }
         nonisolated struct Output: Codable, Equatable {
@@ -96,13 +93,11 @@ nonisolated struct UsageRecord: Codable, Identifiable, Equatable {
     var outputTokens: Int
     var cachedTokens: Int
     var totalTokens: Int
-    var cacheReadRate: Double
     var latencyMs: Int
     var ttftMs: Int
     var reasoningEffort: String?
     var finishReason: String?
     var costUsd: Double
-    var provider: String?
     var alias: String?
     var requestId: String?
     var tokenBreakdown: Breakdown?
@@ -114,13 +109,12 @@ nonisolated struct UsageRecord: Codable, Identifiable, Equatable {
         case outputTokens = "output_tokens"
         case cachedTokens = "cached_tokens"
         case totalTokens = "total_tokens"
-        case cacheReadRate = "cache_read_rate"
         case latencyMs = "latency_ms"
         case ttftMs = "ttft_ms"
         case reasoningEffort = "reasoning_effort"
         case finishReason = "finish_reason"
         case costUsd = "cost_usd"
-        case provider, alias
+        case alias
         case requestId = "request_id"
         case tokenBreakdown = "token_breakdown"
     }
@@ -139,13 +133,11 @@ nonisolated struct UsageRecord: Codable, Identifiable, Equatable {
         outputTokens = try c.decodeIfPresent(Int.self, forKey: .outputTokens) ?? 0
         cachedTokens = try c.decodeIfPresent(Int.self, forKey: .cachedTokens) ?? 0
         totalTokens = try c.decodeIfPresent(Int.self, forKey: .totalTokens) ?? 0
-        cacheReadRate = try c.decodeIfPresent(Double.self, forKey: .cacheReadRate) ?? 0
         latencyMs = try c.decodeIfPresent(Int.self, forKey: .latencyMs) ?? 0
         ttftMs = try c.decodeIfPresent(Int.self, forKey: .ttftMs) ?? 0
         reasoningEffort = try c.decodeIfPresent(String.self, forKey: .reasoningEffort)
         finishReason = try c.decodeIfPresent(String.self, forKey: .finishReason)
         costUsd = try c.decodeIfPresent(Double.self, forKey: .costUsd) ?? 0
-        provider = try c.decodeIfPresent(String.self, forKey: .provider)
         alias = try c.decodeIfPresent(String.self, forKey: .alias)
         requestId = try c.decodeIfPresent(String.self, forKey: .requestId)
         tokenBreakdown = try c.decodeIfPresent(Breakdown.self, forKey: .tokenBreakdown)
@@ -159,11 +151,6 @@ nonisolated struct UsageRecord: Codable, Identifiable, Equatable {
 
 nonisolated struct HealthResponse: Decodable {
     var status: String
-    var detail: String?
-    var version: String
-    var api: String?
-    var accounts: Int?
-    var pools: [String: Int]?
 }
 
 nonisolated struct AccountListResponse: Decodable {
@@ -176,7 +163,6 @@ nonisolated struct AccountView: Decodable, Identifiable, Equatable {
     var workbuddyUid: String?
     var workbuddyNickname: String?
     var antigravityEmail: String?
-    var antigravityProjectId: String?
     var disabled: Bool?
 
     var id: String { name }
@@ -186,19 +172,16 @@ nonisolated struct AccountView: Decodable, Identifiable, Equatable {
         case workbuddyUid = "workbuddy_uid"
         case workbuddyNickname = "workbuddy_nickname"
         case antigravityEmail = "antigravity_email"
-        case antigravityProjectId = "antigravity_project_id"
     }
 }
 
 nonisolated struct QuotaBucket: Codable, Equatable {
     var bucketId: String?
     var displayName: String?
-    var window: String?
     var resetTime: String?
     var remainingFraction: Double?
 
     enum CodingKeys: String, CodingKey {
-        case window
         case bucketId = "bucketId"
         case displayName = "displayName"
         case resetTime = "resetTime"
@@ -208,14 +191,11 @@ nonisolated struct QuotaBucket: Codable, Equatable {
 
 nonisolated struct QuotaGroup: Codable, Equatable {
     var displayName: String?
-    var description: String?
     var buckets: [QuotaBucket]?
 }
 
 nonisolated struct QuotaAccount: Codable, Equatable {
     var name: String
-    var email: String?
-    var project: String?
     var groups: [QuotaGroup]?
     var error: String?
 }
@@ -246,22 +226,14 @@ nonisolated struct PricesResponse: Decodable {
     var prices: [String: ModelPrice]
 }
 
-nonisolated struct OkResponse: Decodable {
-    var ok: Bool?
-    var name: String?
-    var error: String?
-}
-
 nonisolated struct EffortLevelsResponse: Decodable {
     var levels: [String]
 }
 
 nonisolated struct ModelsDevLookup: Decodable {
-    var source: String?
     var input: Double?
     var output: Double?
     var cacheRead: Double?
-    var cacheWrite: Double?
     var efforts: [String]
     var context: Int?
     var peakInput: Double?
@@ -269,9 +241,8 @@ nonisolated struct ModelsDevLookup: Decodable {
     var peakCacheRead: Double?
 
     enum CodingKeys: String, CodingKey {
-        case source, input, output, efforts, context
+        case input, output, efforts, context
         case cacheRead = "cache_read"
-        case cacheWrite = "cache_write"
         case peakInput = "peak_input"
         case peakOutput = "peak_output"
         case peakCacheRead = "peak_cache_read"
@@ -279,11 +250,9 @@ nonisolated struct ModelsDevLookup: Decodable {
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
-        source = try c.decodeIfPresent(String.self, forKey: .source)
         input = try c.decodeIfPresent(Double.self, forKey: .input)
         output = try c.decodeIfPresent(Double.self, forKey: .output)
         cacheRead = try c.decodeIfPresent(Double.self, forKey: .cacheRead)
-        cacheWrite = try c.decodeIfPresent(Double.self, forKey: .cacheWrite)
         efforts = try c.decodeIfPresent([String].self, forKey: .efforts) ?? []
         context = try c.decodeIfPresent(Int.self, forKey: .context)
         peakInput = try c.decodeIfPresent(Double.self, forKey: .peakInput)
@@ -301,8 +270,6 @@ nonisolated struct UpstreamCatalogModel: Codable, Identifiable, Equatable {
     var id: String
     var displayName: String?
     var contextLength: Int?
-    var maxCompletionTokens: Int?
-    var ownedBy: String?
     var efforts: [String]?
     var thinking: ThinkingShape?
 
@@ -310,8 +277,6 @@ nonisolated struct UpstreamCatalogModel: Codable, Identifiable, Equatable {
         case id, efforts, thinking
         case displayName = "display_name"
         case contextLength = "context_length"
-        case maxCompletionTokens = "max_completion_tokens"
-        case ownedBy = "owned_by"
     }
 }
 
@@ -350,12 +315,7 @@ nonisolated struct OAuthStartResponse: Decodable {
 nonisolated struct OAuthStatusResponse: Decodable {
     var done: Bool
     var success: Bool
-    var uid: String?
-    var nickname: String?
-    var email: String?
-    var name: String?
     var error: String?
-    var url: String?
 }
 
 nonisolated struct WorkbuddyLocalResponse: Decodable {
@@ -363,12 +323,11 @@ nonisolated struct WorkbuddyLocalResponse: Decodable {
     var source: String?
     var uid: String?
     var nickname: String?
-    var domain: String?
     var authJson: String?
     var searched: [String]?
 
     enum CodingKeys: String, CodingKey {
-        case found, source, uid, nickname, domain, searched
+        case found, source, uid, nickname, searched
         case authJson = "auth_json"
     }
 }
@@ -378,27 +337,19 @@ nonisolated struct WorkbuddyAccountStatus: Decodable, Identifiable, Equatable {
     var nickname: String?
     var credits: Int
     var cooling: Bool
-    var coolKind: String?
     var coolRemainingSec: Int?
     var reason: String?
-    var disabled: Bool
-    var successCount: Int?
-    var errCount: Int?
 
     var id: String { uid }
 
     enum CodingKeys: String, CodingKey {
-        case uid, nickname, credits, cooling, disabled, reason
-        case coolKind = "cool_kind"
+        case uid, nickname, credits, cooling, reason
         case coolRemainingSec = "cool_remaining_sec"
-        case successCount = "success_count"
-        case errCount = "err_count"
     }
 }
 
 nonisolated struct WorkbuddyStatusResponse: Decodable {
     var accounts: [WorkbuddyAccountStatus]
-    var total: Int
     var healthy: Int
     var cooling: Int
     var disabled: Int
@@ -406,17 +357,12 @@ nonisolated struct WorkbuddyStatusResponse: Decodable {
 
 nonisolated struct AntigravityAccountStatus: Decodable, Identifiable, Equatable {
     var name: String
-    var email: String?
-    var project: String?
-    var expiresAt: Double?
     var expired: Bool?
-    var disabled: Bool?
 
     var id: String { name }
 
     enum CodingKeys: String, CodingKey {
-        case name, email, project, expired, disabled
-        case expiresAt = "expires_at"
+        case name, expired
     }
 }
 
@@ -424,20 +370,6 @@ nonisolated struct AntigravityStatusResponse: Decodable {
     var accounts: [AntigravityAccountStatus]
     var total: Int
     var healthy: Int
-}
-
-nonisolated struct AddAccountBody: Encodable {
-    var name: String
-    var provider: String?
-    var key: String?
-    var sessionToken: String?
-    var email: String?
-    var password: String?
-
-    enum CodingKeys: String, CodingKey {
-        case name, provider, key, email, password
-        case sessionToken = "session_token"
-    }
 }
 
 nonisolated struct EditAccountBody: Encodable {

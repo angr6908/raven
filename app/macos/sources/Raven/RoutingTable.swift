@@ -3,14 +3,12 @@ import Foundation
 nonisolated struct ChannelSpec: Identifiable, Hashable, Sendable {
     var kind: String
     var title: String
-    var symbol: String
-    var presetEfforts: Bool
 
     var id: String { kind }
 
     static let all: [ChannelSpec] = [
-        ChannelSpec(kind: "workbuddy", title: "WorkBuddy", symbol: "cpu", presetEfforts: false),
-        ChannelSpec(kind: "antigravity", title: "Antigravity", symbol: "sparkles", presetEfforts: true),
+        ChannelSpec(kind: "workbuddy", title: "WorkBuddy"),
+        ChannelSpec(kind: "antigravity", title: "Antigravity"),
     ]
 
     static func spec(for kind: String?) -> ChannelSpec? {
@@ -45,16 +43,6 @@ nonisolated enum RouteStatus: Hashable, Sendable {
         }
     }
 
-    var label: String {
-        switch self {
-        case .active: "Active"
-        case .hidden: "Hidden"
-        case .incomplete: "Unnamed"
-        case .duplicate: "Duplicate"
-        case .shadowed: "Shadowed"
-        }
-    }
-
     var explanation: String {
         switch self {
         case .active: "Clients reach this model by its ID."
@@ -68,29 +56,9 @@ nonisolated enum RouteStatus: Hashable, Sendable {
     var isProblem: Bool { rank >= 2 }
 }
 
-nonisolated struct RouteRow: Identifiable, Hashable, Sendable {
-    var provider: Int
-    var model: Int
-    var source: String
+nonisolated struct RouteRow: Hashable, Sendable {
     var kind: String
-    var clientID: String
-    var upstream: String
-    var context: Int?
     var status: RouteStatus
-
-    var id: String { "\(provider)/\(model)" }
-    var contextSort: Int { context ?? 0 }
-    var statusRank: Int { status.rank }
-}
-
-nonisolated struct RouteMatch: Equatable, Sendable {
-    var provider: Int
-    var model: Int
-    var source: String
-    var clientID: String
-    var upstream: String
-    var effort: String?
-    var hidden: Bool
 }
 
 nonisolated enum ProviderIssue: Hashable, Sendable {
@@ -98,11 +66,10 @@ nonisolated enum ProviderIssue: Hashable, Sendable {
 
     var message: String {
         switch self {
-        case .missingName: "Name the provider. Smart aliases and the usage log use it."
-        case .duplicateName: "Another provider has this name, so their smart aliases collide."
-        case .missingURL: "Add the base URL Raven forwards requests to."
-        case .invalidURL: "The base URL needs an http:// or https:// scheme and a host."
-        case .missingKey: "No API key. Raven sends requests without authorization."
+        case .missingName, .missingURL: "Required"
+        case .duplicateName: "Already used by another provider"
+        case .invalidURL: "Needs http:// or https://"
+        case .missingKey: "Not set"
         }
     }
 
@@ -131,34 +98,6 @@ nonisolated enum RoutingTable {
         return nil
     }
 
-    static func splitEffort(_ id: String, levels: [String]) -> (base: String, effort: String)? {
-        guard let at = id.lastIndex(of: "@") else { return nil }
-        let base = String(id[..<at])
-        guard !base.isEmpty else { return nil }
-        let suffix = id[id.index(after: at)...].trimmingCharacters(in: .whitespaces).lowercased()
-        guard levels.contains(suffix) else { return nil }
-        return (base, suffix)
-    }
-
-    static func resolve(_ requested: String, in providers: [ProviderEntry], levels: [String]) -> RouteMatch? {
-        let raw = requested.trimmingCharacters(in: .whitespaces)
-        var alias = raw
-        var effort: String?
-        if let split = splitEffort(raw, levels: levels), let hit = find(split.base, in: providers) {
-            let curated = providers[hit.provider].models[hit.model].thinking?.levels ?? []
-            if curated.isEmpty || curated.contains(split.effort) {
-                alias = split.base
-                effort = split.effort
-            }
-        }
-        guard let hit = find(alias, in: providers) else { return nil }
-        let entry = providers[hit.provider]
-        let model = entry.models[hit.model]
-        return RouteMatch(provider: hit.provider, model: hit.model, source: sourceName(entry),
-                          clientID: alias, upstream: model.name.isEmpty ? alias : model.name,
-                          effort: effort, hidden: entry.disabled == true)
-    }
-
     static func status(provider: Int, model: Int, in providers: [ProviderEntry]) -> RouteStatus {
         let entry = providers[provider]
         let def = entry.models[model]
@@ -171,10 +110,8 @@ nonisolated enum RoutingTable {
 
     static func rows(_ providers: [ProviderEntry]) -> [RouteRow] {
         providers.enumerated().flatMap { index, entry in
-            entry.models.enumerated().map { offset, model in
-                RouteRow(provider: index, model: offset, source: sourceName(entry), kind: entry.usableKind,
-                         clientID: clientID(model), upstream: model.name, context: model.maxContextLength,
-                         status: status(provider: index, model: offset, in: providers))
+            entry.models.indices.map { offset in
+                RouteRow(kind: entry.usableKind, status: status(provider: index, model: offset, in: providers))
             }
         }
     }
@@ -204,14 +141,6 @@ nonisolated enum RoutingTable {
             issues.append(.missingKey)
         }
         return issues
-    }
-
-    static func endpoint(_ entry: ProviderEntry) -> String? {
-        let base = (entry.baseUrl ?? "").trimmingCharacters(in: .whitespaces)
-        guard !base.isEmpty else { return nil }
-        var trimmed = base
-        while trimmed.hasSuffix("/") { trimmed.removeLast() }
-        return trimmed + (entry.usableKind == "responses" ? "/responses" : "/chat/completions")
     }
 
     static func effortSummary(_ levels: [String], order: [String]) -> String {

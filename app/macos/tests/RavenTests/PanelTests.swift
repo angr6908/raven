@@ -13,7 +13,6 @@ private let usageMinimal = """
 struct PanelDecodeTests {
     @Test func usageListFullShape() throws {
         let response = try PanelJSON.decoder.decode(UsageListResponse.self, from: Data(usageFixture.utf8))
-        #expect(response.object == "list")
         let record = try #require(response.data.first)
         #expect(record.model == "Qwen3.8-Flash@WorkBuddy")
         #expect(record.alias == "Qwen3.8-Flash@WorkBuddy")
@@ -44,8 +43,6 @@ struct PanelDecodeTests {
         """
         let health = try PanelJSON.decoder.decode(HealthResponse.self, from: Data(fixture.utf8))
         #expect(health.status == "ok")
-        #expect(health.accounts == 4)
-        #expect(health.pools?["workbuddy"] == 3)
     }
 
     @Test func errorEnvelopeDecodes() throws {
@@ -111,35 +108,6 @@ struct ProviderRoundTripTests {
         #expect(ProviderEntry(name: "wb", kind: "workbuddy").isManaged)
         #expect(!ProviderEntry(name: "cc", kind: "openai").isManaged)
         #expect(!ProviderEntry(name: "cc", kind: nil).isManaged)
-    }
-}
-
-struct SSEParserTests {
-    @Test func framesAndPings() {
-        let lines = [
-            "event: ready",
-            "data: {}",
-            "",
-            ": ping",
-            "",
-            "event: record",
-            "data: {\"id\":\"1\",",
-            "data: \"model\":\"m\"}",
-            "",
-            "event: record",
-            "data: {\"id\":\"2\",\"model\":\"n\"}",
-            "",
-        ]
-        let frames = SSEParser.frames(from: lines)
-        #expect(frames.count == 3)
-        #expect(frames[0].event == "ready")
-        #expect(frames[1].data == "{\"id\":\"1\",\n\"model\":\"m\"}")
-        #expect(frames[2].event == "record")
-    }
-
-    @Test func blankWithoutEventDefaultsToMessage() {
-        let frames = SSEParser.frames(from: ["data: hello", ""])
-        #expect(frames.first?.event == "message")
     }
 }
 
@@ -220,13 +188,6 @@ struct AggregationTests {
         #expect(PanelFormats.parseTokenCount("-5") == nil)
         #expect(PanelFormats.parseTokenCount("abc") == nil)
     }
-
-    @Test func countdownFromEpochMs() {
-        let now = Date().timeIntervalSince1970 * 1000
-        #expect(PanelFormats.countdown(fromEpochMs: now + 2 * 86_400_000 + 3 * 3_600_000 + 60_000) == "2d 3h")
-        #expect(PanelFormats.countdown(fromEpochMs: now + 5 * 3_600_000 + 30 * 60_000 + 60_000) == "5h 30m")
-        #expect(PanelFormats.countdown(fromEpochMs: now - 1000) == "0m")
-    }
 }
 
 private let quotaFixture = """
@@ -284,8 +245,6 @@ struct QuotaClassificationTests {
 
     @Test func numberFormatting() {
         #expect(AccountQuota.creditsText(12345) == "12,345")
-        #expect(AccountQuota.numberText(450) == "450")
-        #expect(AccountQuota.numberText(1000.5) == "1000.5")
     }
 }
 
@@ -297,54 +256,29 @@ struct ModelZoneLogicTests {
         return def
     }
 
-    @Test func smartAliasForStripsVendorPrefix() {
-        #expect(PanelLogic.smartAliasFor(modelName: "glm-4.6", providerName: "WorkBuddy") == "glm-4.6@WorkBuddy")
-        #expect(PanelLogic.smartAliasFor(modelName: "MiniMax/MiniMax-M3", providerName: "cc") == "MiniMax-M3@cc")
-        #expect(PanelLogic.smartAliasFor(modelName: "", providerName: "p") == "@p")
+    @Test func aliasForStripsVendorPrefix() {
+        #expect(PanelLogic.aliasFor(modelName: "glm-4.6", providerName: "WorkBuddy") == "glm-4.6@WorkBuddy")
+        #expect(PanelLogic.aliasFor(modelName: "MiniMax/MiniMax-M3", providerName: "cc") == "MiniMax-M3@cc")
+        #expect(PanelLogic.aliasFor(modelName: "", providerName: "p") == "@p")
     }
 
-    @Test func smartAliasStateDetection() {
-        let owner = "WorkBuddy"
-        let allSmart = [model("glm-4.6", alias: "glm-4.6@WorkBuddy"), model("deepseek-v3.2", alias: "deepseek-v3.2@WorkBuddy")]
-        let smart = !allSmart.isEmpty && allSmart.allSatisfy {
-            $0.name.isEmpty || $0.alias == PanelLogic.smartAliasFor(modelName: $0.name, providerName: owner)
-        }
-        #expect(smart)
+    @Test func withAliasesAlwaysDerivesFromNameAndProvider() {
+        let entry = ProviderEntry(name: "cc", models: [model("glm-4.6", alias: "custom"), model("new-one"), model("")])
+        let aliased = PanelLogic.withAliases(entry)
+        #expect(aliased.models[0].alias == "glm-4.6@cc")
+        #expect(aliased.models[1].alias == "new-one@cc")
+        #expect(aliased.models[2].alias == nil)
 
-        let blankName: [ProviderModelDef] = [model("", alias: nil), model("glm-4.6", alias: "glm-4.6@WorkBuddy")]
-        #expect(blankName.allSatisfy { $0.name.isEmpty || $0.alias == PanelLogic.smartAliasFor(modelName: $0.name, providerName: owner) })
-
-        let edited: [ProviderModelDef] = [model("glm-4.6", alias: "custom-alias")]
-        #expect(!edited.allSatisfy { $0.name.isEmpty || $0.alias == PanelLogic.smartAliasFor(modelName: $0.name, providerName: owner) })
+        let renamed = PanelLogic.withAliases(ProviderEntry(name: "renamed", models: aliased.models))
+        #expect(renamed.models[0].alias == "glm-4.6@renamed")
     }
 
-    @Test func smartDefaultTracksUnmanagedAndSmartAliases() {
-        let old = ProviderEntry(name: "cc", models: [model("glm-4.6", alias: "glm-4.6@cc")])
+    @Test func withAliasesUsesChannelKindWhenUnnamed() {
+        let channel = ProviderEntry(name: "", kind: "workbuddy", models: [model("glm-5")])
+        #expect(PanelLogic.withAliases(channel).models[0].alias == "glm-5@workbuddy")
 
-        let untracked = ProviderEntry(name: "cc", models: [model("glm-4.6", alias: "keep-me")])
-        let kept = PanelLogic.smartDefault(old: old, next: untracked)
-        #expect(kept.models[0].alias == "keep-me")
-
-        let renamed = ProviderEntry(name: "cc", models: [model("glm-5", alias: "glm-4.6@cc")])
-        let retracked = PanelLogic.smartDefault(old: old, next: renamed)
-        #expect(retracked.models[0].alias == "glm-5@cc")
-
-        let appended = ProviderEntry(name: "cc", models: [model("glm-4.6", alias: "glm-4.6@cc"), model("new-one")])
-        let filled = PanelLogic.smartDefault(old: old, next: appended)
-        #expect(filled.models[0].alias == "glm-4.6@cc")
-        #expect(filled.models[1].alias == "new-one@cc")
-
-        let renamedProvider = ProviderEntry(name: "renamed", models: [model("glm-4.6", alias: "glm-4.6@cc")])
-        let followed = PanelLogic.smartDefault(old: old, next: renamedProvider)
-        #expect(followed.models[0].alias == "glm-4.6@renamed")
-    }
-
-    @Test func smartDefaultNeedsBothNameAndModels() {
-        let old = ProviderEntry(name: "cc", models: [model("glm-4.6")])
-        let unnamed = ProviderEntry(name: "  ", models: [model("glm-5", alias: "mine")])
-        #expect(PanelLogic.smartDefault(old: old, next: unnamed).models[0].alias == "mine")
-        let noModels = ProviderEntry(name: "cc", models: [])
-        #expect(PanelLogic.smartDefault(old: old, next: noModels).models.isEmpty)
+        let unnamed = ProviderEntry(name: "  ", kind: "openai", models: [model("glm-5", alias: "mine")])
+        #expect(PanelLogic.withAliases(unnamed).models[0].alias == nil)
     }
 
     @Test func withLevelsCollapsesEmptyThinking() {
@@ -365,9 +299,9 @@ struct ModelZoneLogicTests {
     @Test func withContextRoundTripsTokenEdits() {
         let set = PanelLogic.withContext(model("m1"), tokens: 200_000)
         #expect(set.maxContextLength == 200_000)
-        let cleared = PanelLogic.withContext(set, tokens: PanelLogic.parseTokenCount(""))
+        let cleared = PanelLogic.withContext(set, tokens: PanelFormats.parseTokenCount(""))
         #expect(cleared.maxContextLength == nil)
-        let parsed = PanelLogic.withContext(model("m1"), tokens: PanelLogic.parseTokenCount("1.5m"))
+        let parsed = PanelLogic.withContext(model("m1"), tokens: PanelFormats.parseTokenCount("1.5m"))
         #expect(parsed.maxContextLength == 1_500_000)
     }
 

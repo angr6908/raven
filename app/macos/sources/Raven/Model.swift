@@ -20,6 +20,8 @@ nonisolated struct Provider: Identifiable, Codable, Hashable {
     var modelsURL: String { v1URL + "/models" }
 
     var host: String { URL(string: rootURL)?.host() ?? rootURL }
+
+    var isBuiltIn: Bool { id == LocalProxy.providerID }
 }
 
 nonisolated struct ModelEntry: Identifiable, Codable, Hashable {
@@ -34,12 +36,6 @@ nonisolated struct ModelEntry: Identifiable, Codable, Hashable {
         case contextWindow = "max_context_length"
         case contextLength = "context_length"
         case contextWindowAlias = "context_window"
-    }
-
-    init(modelID: String, ownedBy: String?, contextWindow: Int?) {
-        self.modelID = modelID
-        self.ownedBy = ownedBy
-        self.contextWindow = contextWindow
     }
 
     init(from decoder: Decoder) throws {
@@ -60,7 +56,6 @@ nonisolated struct ModelEntry: Identifiable, Codable, Hashable {
 
     var owner: String { ownedBy ?? "Other" }
 
-
     var family: ModelFamily { ModelFamily(modelID: modelID) }
 }
 
@@ -77,30 +72,6 @@ nonisolated struct ModelItem: Identifiable, Hashable {
 
     var ref: ModelRef { ModelRef(providerID: provider.id, modelID: entry.modelID) }
     var id: String { ref.id }
-}
-
-nonisolated enum SectionKind: Hashable {
-    case provider(Provider)
-    case owner(String)
-
-    var title: String {
-        switch self {
-        case .provider(let provider): provider.name
-        case .owner(let owner): owner
-        }
-    }
-}
-
-nonisolated struct ModelSection: Identifiable {
-    var kind: SectionKind
-    var items: [ModelItem]
-
-    var id: String {
-        switch kind {
-        case .provider(let provider): "provider/" + provider.id.uuidString
-        case .owner(let owner): "owner/" + owner
-        }
-    }
 }
 
 nonisolated enum ModelFamily: Hashable {
@@ -210,7 +181,6 @@ nonisolated enum ProviderStatus: Hashable {
         case .ready(let count): count == 1 ? "1 model" : "\(count) models"
         }
     }
-
 }
 
 nonisolated enum ProviderKind: String, CaseIterable, Identifiable, Codable {
@@ -263,4 +233,6 @@ nonisolated enum LocalProxy {
     static let name = "Raven"
     static let port: UInt16 = 3458
     static let baseURL = "http://127.0.0.1:\(port)"
+    static let providerID = UUID(uuidString: "5241564E-0000-4000-8000-000000003458")!
+    static let provider = Provider(id: providerID, name: name, baseURL: baseURL, apiKey: "raven")
 }

@@ -18,50 +18,6 @@ struct RoutingTableTests {
                       apiKeyEntries: key.isEmpty ? [] : [ApiKeyEntry(apiKey: key)], models: models)
     }
 
-    @Test func resolvesByAliasOrUpstreamNameTopProviderFirst() throws {
-        let providers = [
-            provider("BAI", models: [model("glm-4.6", alias: "glm-4.6@BAI")]),
-            provider("OR", models: [model("glm-4.6", alias: "glm-4.6@OR"), model("kimi-k2")]),
-        ]
-        let byAlias = try #require(RoutingTable.resolve("glm-4.6@OR", in: providers, levels: levels))
-        #expect(byAlias.source == "OR")
-        #expect(byAlias.upstream == "glm-4.6")
-        #expect(byAlias.effort == nil)
-
-        let byName = try #require(RoutingTable.resolve("glm-4.6", in: providers, levels: levels))
-        #expect(byName.source == "BAI")
-
-        #expect(RoutingTable.resolve("kimi-k2", in: providers, levels: levels)?.model == 1)
-        #expect(RoutingTable.resolve("missing", in: providers, levels: levels) == nil)
-        #expect(RoutingTable.resolve("", in: providers, levels: levels) == nil)
-    }
-
-    @Test func trailingEffortSuffixSplitsOnlyWhenTheModelAllowsIt() throws {
-        let providers = [
-            provider("BAI", models: [model("glm-4.6", alias: "glm-4.6@BAI", levels: ["low", "high"]),
-                                     model("kimi-k2", alias: "kimi@BAI")]),
-        ]
-        let curated = try #require(RoutingTable.resolve("glm-4.6@BAI@high", in: providers, levels: levels))
-        #expect(curated.effort == "high")
-        #expect(curated.clientID == "glm-4.6@BAI")
-
-        #expect(RoutingTable.resolve("glm-4.6@BAI@max", in: providers, levels: levels) == nil)
-
-        let open = try #require(RoutingTable.resolve("kimi@BAI@XHIGH", in: providers, levels: levels))
-        #expect(open.effort == "xhigh")
-        #expect(open.upstream == "kimi-k2")
-
-        #expect(RoutingTable.resolve("nobody@high", in: providers, levels: levels) == nil)
-        #expect(RoutingTable.resolve("@high", in: providers, levels: levels) == nil)
-    }
-
-    @Test func splitEffortNeedsKnownLevelAndBase() {
-        #expect(RoutingTable.splitEffort("m@low", levels: levels)?.effort == "low")
-        #expect(RoutingTable.splitEffort("m@BAI", levels: levels) == nil)
-        #expect(RoutingTable.splitEffort("@low", levels: levels) == nil)
-        #expect(RoutingTable.splitEffort("plain", levels: levels) == nil)
-    }
-
     @Test func statusesExplainWhoAnswers() {
         let providers = [
             provider("first", models: [model("glm-4.6", alias: "glm")]),
@@ -77,7 +33,6 @@ struct RoutingTableTests {
             .incomplete,
             .hidden,
         ])
-        #expect(rows[1].clientID == "glm")
         #expect(rows.filter(\.status.isProblem).count == 3)
     }
 
@@ -105,15 +60,6 @@ struct RoutingTableTests {
         #expect(RoutingTable.issues(at: 9, in: providers).isEmpty)
         #expect(ProviderIssue.invalidURL.blocking)
         #expect(!ProviderIssue.missingKey.blocking)
-    }
-
-    @Test func endpointFollowsProtocol() {
-        var entry = provider("p", base: "https://api.example.com/v1/", models: [])
-        #expect(RoutingTable.endpoint(entry) == "https://api.example.com/v1/chat/completions")
-        entry.kind = "responses"
-        #expect(RoutingTable.endpoint(entry) == "https://api.example.com/v1/responses")
-        entry.baseUrl = " "
-        #expect(RoutingTable.endpoint(entry) == nil)
     }
 
     @Test func reorderKeepsUnmovableSlotsInPlace() {

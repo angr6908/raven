@@ -83,6 +83,15 @@ struct ModelParsingTests {
         #expect(decoded.entries[0].ownedBy == "system")
     }
 
+    @Test func ravenIsTheBuiltInLocalProvider() {
+        let raven = LocalProxy.provider
+        #expect(raven.isBuiltIn)
+        #expect(raven.name == "Raven")
+        #expect(raven.v1URL == "http://127.0.0.1:3458/v1")
+        #expect(!raven.apiKey.isEmpty)
+        #expect(!Provider(name: "x", baseURL: LocalProxy.baseURL, apiKey: "").isBuiltIn)
+    }
+
     @Test func providerURLNormalization() {
         let provider = Provider(name: "t", baseURL: "https://proxy.test/", apiKey: "k")
         #expect(provider.rootURL == "https://proxy.test")
@@ -122,18 +131,6 @@ struct ModelParsingTests {
         #expect(edit.isEditing)
         #expect(edit.validated()?.id == existing.id)
         #expect(edit.validated()?.name == "New")
-    }
-
-    @Test func windowDraftTokens() {
-        let draft = WindowDraft(providerID: UUID(), modelID: "m", current: nil)
-        #expect(draft.text == "200000")
-        #expect(draft.tokens == 200_000)
-        draft.text = " 400000 "
-        #expect(draft.tokens == 400_000)
-        draft.text = "abc"
-        #expect(draft.tokens == nil)
-        draft.text = "0"
-        #expect(draft.tokens == nil)
     }
 
     @Test func contextWindowLabels() {

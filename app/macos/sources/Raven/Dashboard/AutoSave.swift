@@ -11,7 +11,6 @@ final class AutoSaveScheduler {
     typealias Save = @MainActor () async throws -> Void
 
     private(set) var status: Status = .idle
-    private(set) var savedAt: Date?
 
     private var timer: Task<Void, Never>?
     private var pending: Save?
@@ -65,7 +64,6 @@ final class AutoSaveScheduler {
             status = .failed(failure)
         } else {
             status = .saved
-            savedAt = .now
         }
     }
 }

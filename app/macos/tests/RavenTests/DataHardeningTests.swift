@@ -34,7 +34,7 @@ struct ContextDecodeTests {
     }
 
     @Test func modelEntryRoundTripWritesMaxContextLength() throws {
-        let entry = ModelEntry(modelID: "m", ownedBy: nil, contextWindow: 1_000_000)
+        let entry = try PanelJSON.decoder.decode(ModelEntry.self, from: Data(#"{"id":"m","max_context_length":1000000}"#.utf8))
         let data = try PanelJSON.encoder.encode(entry)
         let text = String(decoding: data, as: UTF8.self)
         #expect(text.contains("max_context_length"))
@@ -155,39 +155,33 @@ struct WorkbuddyKeyingTests {
     private var accounts: [WorkbuddyAccountStatus] {
         [
             WorkbuddyAccountStatus(uid: "u1", nickname: "alpha", credits: 10, cooling: false,
-                                   coolKind: nil, coolRemainingSec: nil, reason: nil,
-                                   disabled: false, successCount: nil, errCount: nil),
+                                   coolRemainingSec: nil, reason: nil),
             WorkbuddyAccountStatus(uid: "wb-nick-only", nickname: "beta", credits: 20, cooling: false,
-                                   coolKind: nil, coolRemainingSec: nil, reason: nil,
-                                   disabled: false, successCount: nil, errCount: nil),
+                                   coolRemainingSec: nil, reason: nil),
         ]
     }
 
     @Test func uidWinsFirst() {
         let account = AccountView(name: "whatever", provider: "workbuddy", workbuddyUid: "u1",
-                                  workbuddyNickname: "beta", antigravityEmail: nil,
-                                  antigravityProjectId: nil, disabled: nil)
+                                  workbuddyNickname: "beta", antigravityEmail: nil, disabled: nil)
         #expect(WorkbuddyKeying.status(in: accounts, for: account)?.uid == "u1")
     }
 
     @Test func nicknameFillsMissingUid() {
         let account = AccountView(name: "alpha", provider: "workbuddy", workbuddyUid: nil,
-                                  workbuddyNickname: "beta", antigravityEmail: nil,
-                                  antigravityProjectId: nil, disabled: nil)
+                                  workbuddyNickname: "beta", antigravityEmail: nil, disabled: nil)
         #expect(WorkbuddyKeying.status(in: accounts, for: account)?.uid == "wb-nick-only")
     }
 
     @Test func nameFallsBackToUid() {
         let account = AccountView(name: "u1", provider: "workbuddy", workbuddyUid: nil,
-                                  workbuddyNickname: nil, antigravityEmail: nil,
-                                  antigravityProjectId: nil, disabled: nil)
+                                  workbuddyNickname: nil, antigravityEmail: nil, disabled: nil)
         #expect(WorkbuddyKeying.status(in: accounts, for: account)?.nickname == "alpha")
     }
 
     @Test func unmatchedAccountReturnsNil() {
         let account = AccountView(name: "ghost", provider: "workbuddy", workbuddyUid: "u9",
-                                  workbuddyNickname: "omega", antigravityEmail: nil,
-                                  antigravityProjectId: nil, disabled: nil)
+                                  workbuddyNickname: "omega", antigravityEmail: nil, disabled: nil)
         #expect(WorkbuddyKeying.status(in: accounts, for: account) == nil)
     }
 }

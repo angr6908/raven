@@ -34,8 +34,10 @@ struct ModelsPage: View {
                 HStack {
                     Button("Try Again") { app.refresh(provider) }
                         .buttonStyle(.glassProminent)
-                    Button("Edit Provider…") { app.edit(provider) }
-                        .buttonStyle(.glass)
+                    if !provider.isBuiltIn {
+                        Button("Edit Provider…") { app.edit(provider) }
+                            .buttonStyle(.glass)
+                    }
                 }
             }
         } else if store.isRefreshing && store.modelCount == 0 {

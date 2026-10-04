@@ -118,11 +118,6 @@ nonisolated enum AccountQuota {
         return formatter.string(from: NSNumber(value: value)) ?? "\(value)"
     }
 
-    static func numberText(_ value: Double) -> String {
-        if value == value.rounded(), value.magnitude < 1e15 { return String(Int(value)) }
-        return String(value)
-    }
-
     private static func nonEmpty(_ text: String?) -> String? {
         guard let text, !text.isEmpty else { return nil }
         return text

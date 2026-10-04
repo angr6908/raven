@@ -56,10 +56,6 @@ final class PricingStore {
         PanelLogic.priceRows(prices: prices, recordModels: recordModels)
     }
 
-    func entry(for model: String) -> ModelPrice {
-        prices[PanelLogic.priceMapKey(prices, model: model)] ?? ModelPrice()
-    }
-
     func setRate(_ model: String, field: String, value: Double) {
         mutate(model) { price in
             PanelLogic.applyRate(&price, field: field, value: value)
@@ -71,9 +67,6 @@ final class PricingStore {
             PanelLogic.applyPeakToggle(&price, on: on)
         }
     }
-
-
-
 
     func setWindows(_ model: String, windows: [[Int]]) {
         mutate(model) { price in
@@ -176,27 +169,18 @@ final class PricingStore {
         return PriceLookupOutcome(model: model, lookup: found)
     }
 
-    func fetchAll(_ models: [String]) async -> PricingBatchOutcome {
+    func fetchAll(_ models: [String]) async {
         var updates: [(String, ModelsDevLookup)] = []
-        var empty = 0
-        var failed = 0
         let lookups = models.map { model in
             Task { await Self.lookupOutcome(model) }
         }
         for task in lookups {
             let outcome = await task.value
-            guard let found = outcome.lookup else {
-                failed += 1
-                continue
-            }
-            if found.input == nil && found.output == nil && found.cacheRead == nil {
-                empty += 1
-            } else {
-                updates.append((outcome.model, found))
-            }
+            guard let found = outcome.lookup,
+                  found.input != nil || found.output != nil || found.cacheRead != nil else { continue }
+            updates.append((outcome.model, found))
         }
         applyBatch(updates)
-        return PricingBatchOutcome(priced: updates.count, empty: empty, failed: failed)
     }
 }
 
@@ -207,12 +191,6 @@ nonisolated struct PriceLookupOutcome: Sendable {
 
 nonisolated enum PricingFetchOutcome {
     case ok, empty, error
-}
-
-nonisolated struct PricingBatchOutcome: Equatable {
-    var priced: Int
-    var empty: Int
-    var failed: Int
 }
 
 nonisolated struct PricingRowData: Equatable, Sendable {

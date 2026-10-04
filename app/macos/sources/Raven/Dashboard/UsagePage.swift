@@ -7,11 +7,9 @@ nonisolated struct ModelUsageRow: Identifiable, Sendable {
     var requests: Int
     var successRate: Double
     var input: Double
-    var cached: Double
     var cacheRate: Double
     var output: Double
     var avgLatency: Double
-    var avgFirstToken: Double
     var avgTPS: Double
     var cost: Double
 
@@ -22,11 +20,9 @@ nonisolated struct ModelUsageRow: Identifiable, Sendable {
         requests = agg.requests
         successRate = agg.requests > 0 ? Double(agg.requests - agg.errors) / Double(agg.requests) : 0
         input = agg.input
-        cached = agg.cached
         cacheRate = agg.input > 0 ? agg.cached / agg.input : 0
         output = agg.output
         avgLatency = agg.ok > 0 ? agg.latSum / Double(agg.ok) : 0
-        avgFirstToken = agg.ttftOk > 0 ? agg.ttftSum / Double(agg.ttftOk) : 0
         avgTPS = agg.ok > 0 ? agg.tpsSum / Double(agg.ok) : 0
         cost = agg.cost
     }
@@ -45,7 +41,6 @@ nonisolated struct RequestRow: Identifiable, Sendable {
 
     var id: String { record.id }
     var status: Int { record.status }
-    var latency: Int { record.latencyMs }
     var cost: Double { record.costUsd }
     var effort: String { record.reasoningEffort ?? "" }
     var isError: Bool { record.status >= 400 }

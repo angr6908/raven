@@ -9,13 +9,11 @@ struct RavenCommands: Commands {
         CommandGroup(replacing: .newItem) {
             Button("Add Provider…") { model.addProvider() }
                 .keyboardShortcut("n", modifiers: .command)
-            Button("Add Local Proxy") { model.addLocalProxy() }
         }
 
         CommandMenu("Launch") {
             Button("Quick Launch…") { model.sheet = .quickLaunch }
                 .keyboardShortcut("k", modifiers: .command)
-                .disabled(store.providers.isEmpty)
 
             Button("Launch") { model.launch() }
                 .keyboardShortcut(.return, modifiers: .command)
@@ -55,7 +53,6 @@ struct RavenCommands: Commands {
                 .keyboardShortcut("r", modifiers: .command)
             Button("Refresh All Providers") { model.refreshAll() }
                 .keyboardShortcut("r", modifiers: [.command, .shift])
-                .disabled(store.providers.isEmpty)
 
             Divider()
 
@@ -63,12 +60,12 @@ struct RavenCommands: Commands {
                 if let provider = model.activeProvider { model.edit(provider) }
             }
             .keyboardShortcut("e", modifiers: .command)
-            .disabled(model.activeProvider == nil)
+            .disabled(model.activeProvider?.isBuiltIn ?? true)
 
             Button("Remove Provider…") {
                 if let provider = model.activeProvider { model.confirmRemoval(of: provider) }
             }
-            .disabled(model.activeProvider == nil)
+            .disabled(model.activeProvider?.isBuiltIn ?? true)
         }
 
         CommandGroup(after: .sidebar) {

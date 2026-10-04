@@ -254,11 +254,6 @@ final class AccountsStore {
             }
         }
     }
-
-    private func blankToNil(_ text: String?) -> String? {
-        guard let text, !text.trimmingCharacters(in: .whitespaces).isEmpty else { return nil }
-        return text.trimmingCharacters(in: .whitespaces)
-    }
 }
 
 nonisolated struct EmptyBody: Encodable {}

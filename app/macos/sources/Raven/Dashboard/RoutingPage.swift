@@ -1,10 +1,5 @@
 import SwiftUI
 
-enum RoutingSelection: Hashable {
-    case routes
-    case source(RouteSource)
-}
-
 enum SourceTab: String, CaseIterable, Identifiable {
     case models, connection
 
@@ -15,40 +10,24 @@ enum SourceTab: String, CaseIterable, Identifiable {
 @Observable
 final class RoutingNavigation {
     static let shared = RoutingNavigation()
+    static let home = RouteSource.channel(ChannelSpec.all[0].kind)
 
-    var selection: RoutingSelection = .routes
+    var selection: RouteSource = home
     var tab: SourceTab = .models
     var models: Set<Int> = []
     var catalog: RouteSource?
     var removing: UUID?
 
-    var source: RouteSource? {
-        if case .source(let source) = selection { return source }
-        return nil
-    }
-
-    func show(_ source: RouteSource, model: Int? = nil) {
-        selection = .source(source)
+    func show(_ source: RouteSource) {
+        selection = source
         tab = .models
-        models = model.map { [$0] } ?? []
+        models = []
     }
 
     func open(_ source: RouteSource, tab: SourceTab) {
-        selection = .source(source)
+        selection = source
         self.tab = tab
         models = []
-    }
-}
-
-extension ChannelSpec {
-    var tint: Color { kind == "antigravity" ? .indigo : .teal }
-}
-
-enum RouteTint {
-    static func color(_ name: String) -> Color {
-        let palette: [Color] = [.blue, .purple, .pink, .orange, .teal, .indigo, .green, .mint, .cyan, .red]
-        let seed = name.lowercased().unicodeScalars.reduce(0) { ($0 &* 31 &+ Int($1.value)) & 0x7fff_ffff }
-        return palette[seed % palette.count]
     }
 }
 
@@ -75,10 +54,8 @@ extension RouteStatus {
 struct RoutingPage: View {
     private let store = ProvidersPanelStore.shared
     private let nav = RoutingNavigation.shared
-    @Environment(AppModel.self) private var app
 
     var body: some View {
-        @Bindable var app = app
         @Bindable var nav = nav
         let rows = RoutingTable.rows(store.list)
         Group {
@@ -87,7 +64,7 @@ struct RoutingPage: View {
                     SourceList(rows: rows)
                         .frame(width: 264)
                     Divider()
-                    RoutingDetail(rows: rows)
+                    RoutingDetail()
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else if let error = store.error {
@@ -100,26 +77,33 @@ struct RoutingPage: View {
         }
         .navigationTitle("Routing")
         .navigationSubtitle(subtitle(rows))
-        .searchable(text: $app.search, placement: .toolbar, prompt: "Filter models")
-        .toolbar { RoutingToolbar() }
+        .toolbar { RoutingToolbar(loaded: store.providers != nil) }
         .sheet(item: $nav.catalog) { source in
             CatalogSheet(source: source)
         }
         .confirmationDialog("Remove this provider?", isPresented: Binding(
             get: { nav.removing != nil }, set: { if !$0 { nav.removing = nil } }), presenting: nav.removing) { id in
             Button("Remove \(store.entry(.provider(id)).map(RoutingTable.sourceName) ?? "Provider")", role: .destructive) {
-                if nav.selection == .source(.provider(id)) { nav.selection = .routes }
+                if nav.selection == .provider(id) { nav.show(RoutingNavigation.home) }
                 store.remove(id)
             }
         } message: { id in
             let count = store.entry(.provider(id))?.models.count ?? 0
-            Text(count == 0 ? "Its endpoint and API keys leave the routing doc."
-                 : "Its endpoint, API keys and \(count == 1 ? "1 model" : "\(count) models") leave the routing doc. Clients asking for those models stop getting answers.")
+            Text(count == 0 ? "This can't be undone." : "Its \(count == 1 ? "model stops" : "\(count) models stop") routing.")
         }
         .onChange(of: store.ids) {
-            if case .source(.provider(let id)) = nav.selection, !store.ids.contains(id) {
-                nav.selection = .routes
+            if case .provider(let id) = nav.selection, !store.ids.contains(id) {
+                nav.show(RoutingNavigation.home)
             }
+        }
+        .onChange(of: UsageStore.shared.isProxyUp) { _, up in
+            if up, store.providers == nil { store.reload() }
+        }
+        .alert("Couldn't Reach models.dev", isPresented: Binding(
+            get: { ModelFiller.shared.note != nil }, set: { if !$0 { ModelFiller.shared.dismiss() } })) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(ModelFiller.shared.note ?? "")
         }
         .onAppear { store.start() }
     }
@@ -136,28 +120,57 @@ struct RoutingPage: View {
 private struct RoutingToolbar: ToolbarContent {
     private let store = ProvidersPanelStore.shared
     private let nav = RoutingNavigation.shared
+    let loaded: Bool
 
     var body: some ToolbarContent {
-        if store.saver.status != .idle {
-            ToolbarItem(placement: .primaryAction) {
-                SaveIndicator()
+        @Bindable var nav = nav
+        let source = nav.selection
+        if loaded, case .provider = source {
+            ToolbarItem(placement: .principal) {
+                Picker("Section", selection: $nav.tab) {
+                    ForEach(SourceTab.allCases) { Text($0.title).tag($0) }
+                }
+                .pickerStyle(.segmented)
             }
-            .sharedBackgroundVisibility(.hidden)
         }
-        if let source = nav.source, nav.tab == .models || isChannel(source) {
+        if case .failed(let message) = store.saver.status {
+            ToolbarItem(placement: .primaryAction) {
+                Button("Retry Save", systemImage: "exclamationmark.triangle.fill") { store.scheduleSave() }
+                    .tint(.red)
+                    .help("Couldn't save routing: \(message)")
+            }
+        }
+        let models = nav.tab == .models || isChannel(source)
+        if loaded, models {
             ToolbarItem(placement: .primaryAction) {
                 FillButton(source: source)
             }
+        }
+        if loaded {
             ToolbarItem(placement: .primaryAction) {
                 Menu {
-                    Button("Add from Catalog…", systemImage: "square.grid.2x2") { nav.catalog = source }
-                    Button("Add Blank Row", systemImage: "plus.rectangle") { addBlank(source) }
+                    if models {
+                        Button("Add Models from Catalog…") { nav.catalog = source }
+                        Button("Add Blank Row") { addBlank(source) }
+                        Divider()
+                    }
+                    Button("Add API Provider") {
+                        let id = store.addProvider()
+                        nav.open(.provider(id), tab: .connection)
+                    }
                 } label: {
-                    Label("Add Models", systemImage: "plus")
-                } primaryAction: {
-                    nav.catalog = source
+                    Label("Add", systemImage: "plus")
                 }
-                .help("Add models from the upstream catalog, or a blank row from the menu")
+                .help("Add")
+            }
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    SourceMenu(source: source)
+                } label: {
+                    Label("More", systemImage: "ellipsis")
+                }
+                .menuIndicator(.hidden)
+                .help("More")
             }
         }
     }
@@ -174,108 +187,80 @@ private struct RoutingToolbar: ToolbarContent {
     }
 }
 
-private struct SaveIndicator: View {
+private struct SourceMenu: View {
     private let store = ProvidersPanelStore.shared
+    private let nav = RoutingNavigation.shared
+    @Environment(AppModel.self) private var app
+    let source: RouteSource
 
     var body: some View {
-        switch store.saver.status {
-        case .idle:
-            EmptyView()
-        case .saving:
-            HStack(spacing: Space.xs) {
-                ProgressView().controlSize(.mini)
-                Text("Saving…")
+        Toggle("Enabled", isOn: Binding(
+            get: { store.entry(source)?.disabled != true },
+            set: { store.setEnabled(source, $0) }))
+        Divider()
+        switch source {
+        case .channel:
+            Button("Manage Accounts…") { app.page = .accounts }
+        case .provider(let id):
+            let upstreams = store.upstreams
+            let position = upstreams.firstIndex { $0.id == id } ?? 0
+            Button("Edit Connection…") { nav.open(source, tab: .connection) }
+            Button("Duplicate", systemImage: "plus.square.on.square") {
+                if let copy = store.duplicate(id) { nav.open(.provider(copy), tab: .connection) }
             }
-            .font(.subheadline)
-            .foregroundStyle(.secondary)
-            .help("Changes save automatically and the proxy reloads them")
-        case .saved:
-            Label("Saved", systemImage: "checkmark.circle.fill")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-                .labelStyle(.titleAndIcon)
-                .help(savedHelp)
-        case .failed(let message):
-            Button {
-                store.scheduleSave()
-            } label: {
-                Label("Retry Save", systemImage: "exclamationmark.triangle.fill")
-                    .labelStyle(.titleAndIcon)
-                    .foregroundStyle(.red)
-            }
-            .help("Save failed: \(message)")
+            Divider()
+            Button("Move Up") { store.moveUpstream(id, by: -1) }
+                .disabled(position == 0)
+            Button("Move Down") { store.moveUpstream(id, by: 1) }
+                .disabled(position >= upstreams.count - 1)
+            Divider()
+            Button("Remove…", systemImage: "trash", role: .destructive) { nav.removing = id }
         }
-    }
-
-    private var savedHelp: String {
-        guard let date = store.saver.savedAt else { return "Saved to the routing doc" }
-        return "Saved to the routing doc at \(date.formatted(date: .omitted, time: .standard))"
     }
 }
 
 private struct SourceList: View {
     private let store = ProvidersPanelStore.shared
     private let nav = RoutingNavigation.shared
-    @Environment(AppModel.self) private var app
     let rows: [RouteRow]
 
     var body: some View {
         let upstreams = store.upstreams
         List(selection: selection) {
-            AllRoutesRow(rows: rows)
-                .tag(RoutingSelection.routes)
-
             Section("Channels") {
                 ForEach(ChannelSpec.all) { spec in
-                    ChannelRow(spec: spec, rows: rows.filter { $0.kind == spec.kind })
-                        .tag(RoutingSelection.source(.channel(spec.kind)))
-                        .contextMenu { channelMenu(spec) }
+                    SourceRow(title: spec.title, count: rows.filter { $0.kind == spec.kind }.count,
+                              dimmed: store.entry(.channel(spec.kind))?.disabled == true)
+                        .tag(RouteSource.channel(spec.kind))
+                        .contextMenu { SourceMenu(source: .channel(spec.kind)) }
                 }
             }
 
-            Section {
-                ForEach(Array(upstreams.enumerated()), id: \.element.id) { position, item in
-                    UpstreamRow(entry: item.entry, priority: position + 1,
-                                issues: RoutingTable.issues(at: item.index, in: store.list),
-                                problems: rows.filter { $0.provider == item.index && $0.status.isProblem }.count)
-                        .tag(RoutingSelection.source(.provider(item.id)))
-                        .contextMenu { upstreamMenu(item.id, entry: item.entry, position: position, count: upstreams.count) }
+            Section("API Providers") {
+                ForEach(upstreams, id: \.id) { item in
+                    let base = (item.entry.baseUrl ?? "").trimmingCharacters(in: .whitespaces)
+                    SourceRow(title: RoutingTable.sourceName(item.entry), count: item.entry.models.count,
+                              dimmed: item.entry.disabled == true)
+                        .help(URL(string: base)?.host() ?? base)
+                        .tag(RouteSource.provider(item.id))
+                        .contextMenu { SourceMenu(source: .provider(item.id)) }
                 }
                 .onMove { store.moveUpstreams(from: $0, to: $1) }
-            } header: {
-                Text("API Providers")
-            } footer: {
-                if upstreams.count > 1 {
-                    Text("Raven tries providers top to bottom. Drag to reorder.")
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                }
             }
         }
         .listStyle(.sidebar)
+        .scrollContentBackground(.hidden)
         .onDeleteCommand {
-            if case .source(.provider(let id)) = nav.selection { nav.removing = id }
-        }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            HStack {
-                Button("Add Provider", systemImage: "plus") {
-                    let id = store.addProvider()
-                    nav.open(.provider(id), tab: .connection)
-                }
-                .buttonStyle(.glass)
-                .help("Add an OpenAI-compatible API provider")
-                Spacer(minLength: 0)
-            }
-            .padding(Space.md)
+            if case .provider(let id) = nav.selection { nav.removing = id }
         }
     }
 
-    private var selection: Binding<RoutingSelection?> {
+    private var selection: Binding<RouteSource?> {
         Binding(get: { nav.selection }, set: { value in
             guard let value, value != nav.selection else { return }
             nav.selection = value
             nav.models = []
-            if case .source(.provider(let id)) = value, let index = store.index(of: .provider(id)),
+            if case .provider(let id) = value, let index = store.index(of: .provider(id)),
                RoutingTable.issues(at: index, in: store.list).contains(where: \.blocking) {
                 nav.tab = .connection
             } else {
@@ -283,178 +268,39 @@ private struct SourceList: View {
             }
         })
     }
-
-    @ViewBuilder
-    private func channelMenu(_ spec: ChannelSpec) -> some View {
-        let enabled = store.entry(.channel(spec.kind))?.disabled != true
-        Button(enabled ? "Turn Off" : "Turn On", systemImage: enabled ? "pause.circle" : "play.circle") {
-            store.setEnabled(.channel(spec.kind), !enabled)
-        }
-        Button("Add from Catalog…", systemImage: "square.grid.2x2") {
-            nav.show(.channel(spec.kind))
-            nav.catalog = .channel(spec.kind)
-        }
-        Divider()
-        Button("Manage Accounts…", systemImage: "person.2.badge.key") { app.page = .accounts }
-    }
-
-    @ViewBuilder
-    private func upstreamMenu(_ id: UUID, entry: ProviderEntry, position: Int, count: Int) -> some View {
-        let enabled = entry.disabled != true
-        Button(enabled ? "Turn Off" : "Turn On", systemImage: enabled ? "pause.circle" : "play.circle") {
-            store.setEnabled(.provider(id), !enabled)
-        }
-        Button("Edit Connection…", systemImage: "network") { nav.open(.provider(id), tab: .connection) }
-        Button("Duplicate", systemImage: "plus.square.on.square") {
-            if let copy = store.duplicate(id) { nav.open(.provider(copy), tab: .connection) }
-        }
-        Divider()
-        Button("Move Up", systemImage: "arrow.up") { store.moveUpstream(id, by: -1) }
-            .disabled(position == 0)
-        Button("Move Down", systemImage: "arrow.down") { store.moveUpstream(id, by: 1) }
-            .disabled(position >= count - 1)
-        Divider()
-        Button("Remove…", systemImage: "trash", role: .destructive) { nav.removing = id }
-    }
 }
 
-private struct SourceRowLayout<Accessory: View>: View {
-    let symbol: String
-    let tint: Color
+private struct SourceRow: View {
     let title: String
-    let subtitle: String
-    var mono = false
+    let count: Int
     var dimmed = false
-    @ViewBuilder var accessory: Accessory
 
     var body: some View {
-        HStack(spacing: Space.sm) {
-            Glyph(symbol: symbol, tint: dimmed ? .secondary : tint, size: 28)
-            VStack(alignment: .leading, spacing: 1) {
-                Text(title)
-                    .font(mono ? .identifier : .body)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-                Text(subtitle)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .lineLimit(1)
-                    .truncationMode(.middle)
-            }
+        HStack(spacing: Space.xs) {
+            Text(title)
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .opacity(dimmed ? 0.45 : 1)
             Spacer(minLength: Space.xs)
-            accessory
+            Text("\(count)")
+                .fontWeight(.medium)
+                .monospacedDigit()
+                .foregroundStyle(.secondary)
         }
-        .padding(.vertical, 2)
-        .opacity(dimmed ? 0.6 : 1)
-    }
-}
-
-private struct AllRoutesRow: View {
-    let rows: [RouteRow]
-
-    var body: some View {
-        let problems = rows.filter(\.status.isProblem).count
-        SourceRowLayout(symbol: "arrow.triangle.branch", tint: .accentColor, title: "All Routes",
-                        subtitle: summary(problems)) {
-            if problems > 0 {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .help(problems == 1 ? "1 route needs attention" : "\(problems) routes need attention")
-            }
-        }
-    }
-
-    private func summary(_ problems: Int) -> String {
-        let active = rows.filter { $0.status == .active }.count
-        if rows.isEmpty { return "No models yet" }
-        return active == rows.count ? "\(rows.count) live" : "\(active) of \(rows.count) live"
-    }
-}
-
-private struct ChannelRow: View {
-    private let store = ProvidersPanelStore.shared
-    let spec: ChannelSpec
-    let rows: [RouteRow]
-
-    var body: some View {
-        let entry = store.entry(.channel(spec.kind))
-        let off = entry?.disabled == true
-        let problems = rows.filter(\.status.isProblem).count
-        SourceRowLayout(symbol: spec.symbol, tint: spec.tint, title: spec.title,
-                        subtitle: subtitle(off: off), dimmed: off) {
-            if problems > 0 {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .help(problems == 1 ? "1 model needs attention" : "\(problems) models need attention")
-            }
-        }
-    }
-
-    private func subtitle(off: Bool) -> String {
-        let count = rows.count == 1 ? "1 model" : "\(rows.count) models"
-        return off ? "Off · \(count)" : (rows.isEmpty ? "No models pinned" : count)
-    }
-}
-
-private struct UpstreamRow: View {
-    let entry: ProviderEntry
-    let priority: Int
-    let issues: [ProviderIssue]
-    let problems: Int
-
-    var body: some View {
-        let off = entry.disabled == true
-        let blocking = issues.filter(\.blocking)
-        SourceRowLayout(symbol: "server.rack", tint: RouteTint.color(entry.name),
-                        title: RoutingTable.sourceName(entry), subtitle: subtitle(off: off, blocking: !blocking.isEmpty),
-                        mono: !entry.name.trimmingCharacters(in: .whitespaces).isEmpty, dimmed: off) {
-            if !blocking.isEmpty || problems > 0 {
-                Image(systemName: "exclamationmark.triangle.fill")
-                    .foregroundStyle(.orange)
-                    .help(blocking.first?.message ?? (problems == 1 ? "1 model needs attention" : "\(problems) models need attention"))
-            } else {
-                Text("\(priority)")
-                    .font(.figureSmall)
-                    .foregroundStyle(.tertiary)
-                    .help("Priority \(priority): earlier providers win when two list the same model")
-            }
-        }
-    }
-
-    private func subtitle(off: Bool, blocking: Bool) -> String {
-        let count = entry.models.count == 1 ? "1 model" : "\(entry.models.count) models"
-        if blocking { return "Needs setup · \(count)" }
-        let host = (entry.baseUrl ?? "").trimmingCharacters(in: .whitespaces)
-        let label = URL(string: host)?.host() ?? host
-        let parts = [off ? "Off" : nil, label.isEmpty ? nil : label, count].compactMap { $0 }
-        return parts.joined(separator: " · ")
     }
 }
 
 private struct RoutingDetail: View {
     private let store = ProvidersPanelStore.shared
     private let nav = RoutingNavigation.shared
-    let rows: [RouteRow]
 
     var body: some View {
-        Group {
-            switch nav.selection {
-            case .routes:
-                RoutesOverview(rows: rows)
-            case .source(let source):
-                SourceDetail(source: source)
-                    .id(source)
+        SourceDetail(source: nav.selection)
+            .id(nav.selection)
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let message = store.error {
+                    Notice(message: message).padding(Space.md)
+                }
             }
-        }
-        .safeAreaInset(edge: .top, spacing: 0) {
-            if let message = failure {
-                Notice(message: message).padding(Space.md)
-            }
-        }
-    }
-
-    private var failure: String? {
-        if case .failed(let message) = store.saver.status { return "Couldn't save routing: \(message)" }
-        return store.error
     }
 }

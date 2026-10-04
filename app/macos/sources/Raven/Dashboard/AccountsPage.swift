@@ -3,7 +3,6 @@ import SwiftUI
 
 struct AccountsPage: View {
     private let store = AccountsStore.shared
-    @Environment(AppModel.self) private var app
     @State private var removing: AccountView?
 
     var body: some View {

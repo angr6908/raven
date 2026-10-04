@@ -3,26 +3,26 @@ import Foundation
 nonisolated enum PanelLogic {
     static let fallbackEffortLevels = ["none", "minimal", "low", "medium", "high", "xhigh", "max"]
 
-    static func smartAliasFor(modelName: String, providerName: String) -> String {
+    static func aliasFor(modelName: String, providerName: String) -> String {
         "\(PanelAggregation.stripModelVendorAndProvider(modelName))@\(providerName)"
     }
 
-    static func smartDefault(old: ProviderEntry, next: ProviderEntry) -> ProviderEntry {
-        let name = next.name.trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty, !next.models.isEmpty else { return next }
-        var entry = next
-        entry.models = next.models.enumerated().map { index, model in
-            guard !model.name.isEmpty else { return model }
-            let previous = index < old.models.count ? old.models[index] : nil
-            let tracked = model.alias == nil
-                || ((previous?.alias ?? "") != ""
-                    && model.alias == smartAliasFor(modelName: previous?.name ?? "", providerName: old.name.trimmingCharacters(in: .whitespaces)))
-            guard tracked else { return model }
-            var updated = model
-            updated.alias = smartAliasFor(modelName: model.name, providerName: name)
-            return updated
+    static func aliasOwner(_ entry: ProviderEntry) -> String {
+        let name = entry.name.trimmingCharacters(in: .whitespaces)
+        if name.isEmpty, entry.isManaged { return entry.kind ?? "" }
+        return name
+    }
+
+    static func withAliases(_ entry: ProviderEntry) -> ProviderEntry {
+        let owner = aliasOwner(entry)
+        var updated = entry
+        updated.models = entry.models.map { model in
+            var model = model
+            let name = model.name.trimmingCharacters(in: .whitespaces)
+            model.alias = name.isEmpty || owner.isEmpty ? nil : aliasFor(modelName: model.name, providerName: owner)
+            return model
         }
-        return entry
+        return updated
     }
 
     static func withContext(_ model: ProviderModelDef, tokens: Int?) -> ProviderModelDef {
@@ -47,10 +47,6 @@ nonisolated enum PanelLogic {
         }
         updated.thinking = thinking
         return updated
-    }
-
-    static func parseTokenCount(_ raw: String) -> Int? {
-        PanelFormats.parseTokenCount(raw)
     }
 
     typealias ProviderModelIndex = [String: [String]]

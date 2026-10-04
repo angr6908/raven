@@ -92,7 +92,7 @@ enum Launcher {
                               root: root, key: key, modelQ: modelQ)
         case .codex:
             appendCodexLines(&lines, provider: provider, model: model,
-                             root: root, key: key, modelQ: modelQ)
+                             key: key, modelQ: modelQ)
         }
 
         lines.append("")
@@ -141,7 +141,6 @@ enum Launcher {
     private static func appendCodexLines(_ lines: inout [String],
                                          provider: Provider,
                                          model: String,
-                                         root: String,
                                          key: String,
                                          modelQ: String) {
         let v1 = shellQuote(provider.v1URL)

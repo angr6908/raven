@@ -46,8 +46,13 @@ final class ProvidersPanelStore {
                 let fetched: [ProviderEntry] = try await PanelClient.shared.get("/api/providers")
                 guard !Task.isCancelled else { return }
                 if !self.dirty {
-                    self.ids = Self.carry(ids: self.ids, from: self.list, to: fetched)
-                    self.providers = fetched
+                    let aliased = fetched.map(PanelLogic.withAliases)
+                    self.ids = Self.carry(ids: self.ids, from: self.list, to: aliased)
+                    self.providers = aliased
+                    if aliased != fetched {
+                        self.revision += 1
+                        self.scheduleSave()
+                    }
                 }
                 self.error = nil
             } catch {
@@ -107,18 +112,6 @@ final class ProvidersPanelStore {
         index(of: source).map { list[$0] }
     }
 
-    func source(at index: Int) -> RouteSource? {
-        guard index < list.count, index < ids.count else { return nil }
-        if let kind = list[index].kind, ProviderEntry.managedKinds.contains(kind) { return .channel(kind) }
-        return .provider(ids[index])
-    }
-
-    func owner(_ source: RouteSource) -> String {
-        let name = entry(source)?.name.trimmingCharacters(in: .whitespaces) ?? ""
-        if case .channel(let kind) = source, name.isEmpty { return kind }
-        return name
-    }
-
     var upstreams: [(id: UUID, index: Int, entry: ProviderEntry)] {
         zip(list.indices, zip(ids, list)).compactMap { index, pair in
             pair.1.isManaged ? nil : (pair.0, index, pair.1)
@@ -129,7 +122,7 @@ final class ProvidersPanelStore {
         guard var next = providers else { return }
         var keys = ids
         change(&next, &keys)
-        providers = next
+        providers = next.map(PanelLogic.withAliases)
         ids = keys
         revision += 1
         scheduleSave()
@@ -142,17 +135,12 @@ final class ProvidersPanelStore {
             try await Self.save(snapshot)
             guard let self else { return }
             self.savedRevision = max(self.savedRevision, stamp)
+            await ProviderStore.shared.refresh(LocalProxy.provider)
         }
     }
 
     private static func save(_ list: [ProviderEntry]) async throws {
-        var copy = list
-        for i in copy.indices {
-            for j in copy[i].models.indices where copy[i].models[j].alias == "" {
-                copy[i].models[j].alias = nil
-            }
-        }
-        try await PanelClient.shared.putVoid("/api/providers", json: copy)
+        try await PanelClient.shared.putVoid("/api/providers", json: list)
     }
 
     func edit(_ source: RouteSource, _ change: @escaping (inout ProviderEntry) -> Void) {
@@ -171,14 +159,6 @@ final class ProvidersPanelStore {
                 guard let index = keys.firstIndex(of: id), index < list.count else { return }
                 change(&list[index])
             }
-        }
-    }
-
-    func editSmart(_ source: RouteSource, _ change: @escaping (inout ProviderEntry) -> Void) {
-        edit(source) { entry in
-            let old = entry
-            change(&entry)
-            entry = PanelLogic.smartDefault(old: old, next: entry)
         }
     }
 
@@ -207,7 +187,6 @@ final class ProvidersPanelStore {
             let old = list[index]
             var copy = old
             copy.name = RoutingTable.copyName(old.name, existing: names)
-            copy = PanelLogic.smartDefault(old: old, next: copy)
             list.insert(copy, at: index + 1)
             keys.insert(copyID, at: index + 1)
         }
@@ -238,21 +217,19 @@ final class ProvidersPanelStore {
         moveUpstreams(from: [position], to: offset > 0 ? target + 1 : target)
     }
 
-    func updateModel(_ source: RouteSource, at index: Int, smart: Bool = false,
-                     _ change: @escaping (inout ProviderModelDef) -> Void) {
-        let apply: (inout ProviderEntry) -> Void = { entry in
+    func updateModel(_ source: RouteSource, at index: Int, _ change: @escaping (inout ProviderModelDef) -> Void) {
+        edit(source) { entry in
             guard index < entry.models.count else { return }
             change(&entry.models[index])
         }
-        if smart { editSmart(source, apply) } else { edit(source, apply) }
     }
 
     func addBlankModel(_ source: RouteSource) {
-        editSmart(source) { $0.models.append(ProviderModelDef(name: "")) }
+        edit(source) { $0.models.append(ProviderModelDef(name: "")) }
     }
 
     func addModels(_ source: RouteSource, _ upstream: [UpstreamCatalogModel]) {
-        editSmart(source) { entry in
+        edit(source) { entry in
             var existing = Set(entry.models.map { $0.name.lowercased() })
             for model in upstream where !existing.contains(model.id.lowercased()) {
                 existing.insert(model.id.lowercased())
@@ -267,30 +244,6 @@ final class ProvidersPanelStore {
         edit(source) { entry in
             for index in offsets.sorted(by: >) where index < entry.models.count {
                 entry.models.remove(at: index)
-            }
-        }
-    }
-
-    func smartAliasOn(_ source: RouteSource) -> Bool {
-        let models = entry(source)?.models ?? []
-        let owner = owner(source)
-        guard !owner.isEmpty, models.contains(where: { !$0.name.isEmpty }) else { return false }
-        return models.allSatisfy {
-            $0.name.isEmpty || $0.alias == PanelLogic.smartAliasFor(modelName: $0.name, providerName: owner)
-        }
-    }
-
-    func setSmartAlias(_ source: RouteSource, _ on: Bool) {
-        let owner = owner(source)
-        guard !owner.isEmpty else { return }
-        edit(source) { entry in
-            for index in entry.models.indices where !entry.models[index].name.isEmpty {
-                let smart = PanelLogic.smartAliasFor(modelName: entry.models[index].name, providerName: owner)
-                if on {
-                    entry.models[index].alias = smart
-                } else if entry.models[index].alias == smart {
-                    entry.models[index].alias = ""
-                }
             }
         }
     }

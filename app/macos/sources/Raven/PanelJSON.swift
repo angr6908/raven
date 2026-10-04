@@ -12,16 +12,7 @@ nonisolated enum PanelJSON {
     }()
 }
 
-nonisolated struct RFC3339Date: Decodable, Equatable {
-    let date: Date?
-    let raw: String
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.singleValueContainer()
-        raw = try container.decode(String.self)
-        date = RFC3339Date.parse(raw)
-    }
-
+nonisolated enum RFC3339Date {
     static func parse(_ string: String) -> Date? {
         cacheLock.lock()
         if let cached = cache[string] {
@@ -61,11 +52,4 @@ nonisolated struct RFC3339Date: Decodable, Equatable {
         formatter.formatOptions = [.withInternetDateTime, .withDashSeparatorInDate, .withColonSeparatorInTime]
         return formatter
     }()
-
-    static func utcHour(_ string: String) -> Int? {
-        guard let date = parse(string) else { return nil }
-        var calendar = Calendar(identifier: .gregorian)
-        calendar.timeZone = TimeZone(secondsFromGMT: 0)!
-        return calendar.component(.hour, from: date)
-    }
 }

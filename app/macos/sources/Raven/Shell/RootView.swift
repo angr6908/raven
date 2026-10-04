@@ -2,7 +2,6 @@ import SwiftUI
 
 struct RootView: View {
     @Environment(AppModel.self) private var app
-    @Environment(ProviderStore.self) private var store
     @State private var columns: NavigationSplitViewVisibility = .all
 
     var body: some View {
@@ -37,22 +36,16 @@ struct RootView: View {
 
 private struct DetailRouter: View {
     @Environment(AppModel.self) private var app
-    @Environment(ProviderStore.self) private var store
 
     var body: some View {
-        if app.page.isLaunch && store.providers.isEmpty {
-            WelcomeView()
-                .navigationTitle("Raven")
-        } else {
-            switch app.page {
-            case .models, .pinned, .provider: ModelsPage()
-            case .recents: RecentsPage()
-            case .overview: OverviewPage()
-            case .usage: UsagePage()
-            case .accounts: AccountsPage()
-            case .routing: RoutingPage()
-            case .pricing: PricingPage()
-            }
+        switch app.page {
+        case .models, .pinned, .provider: ModelsPage()
+        case .recents: RecentsPage()
+        case .overview: OverviewPage()
+        case .usage: UsagePage()
+        case .accounts: AccountsPage()
+        case .routing: RoutingPage()
+        case .pricing: PricingPage()
         }
     }
 }

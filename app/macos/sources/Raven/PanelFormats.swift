@@ -58,15 +58,6 @@ nonisolated enum PanelFormats {
         return Double(outputTokens) / (Double(latencyMs) / 1000)
     }
 
-    static func formatDateTime(iso: String) -> String {
-        guard let date = parseISO(iso) else { return "" }
-        return shortFormatter.string(from: date)
-    }
-
-    static func formatDateTime(_ date: Date) -> String {
-        shortFormatter.string(from: date)
-    }
-
     static func hourBucket(_ iso: String) -> String {
         guard let date = parseISO(iso) else {
             return iso.count >= 13 ? String(iso.prefix(13)) : iso
@@ -76,11 +67,6 @@ nonisolated enum PanelFormats {
         let components = calendar.dateComponents([.year, .month, .day, .hour], from: date)
         return String(format: "%04d-%02d-%02dT%02d:00:00Z",
                       components.year ?? 0, components.month ?? 0, components.day ?? 0, components.hour ?? 0)
-    }
-
-    static func hourLabel(_ iso: String) -> String {
-        guard let date = parseISO(iso) else { return "" }
-        return hourFormatter.string(from: date)
     }
 
     static func parseISO(_ iso: String) -> Date? {
@@ -109,28 +95,4 @@ nonisolated enum PanelFormats {
         let tokens = Int((value * scale).rounded())
         return tokens > 0 ? tokens : nil
     }
-
-    static func countdown(fromEpochMs ms: Double) -> String {
-        let seconds = max(0, ms / 1000 - Date().timeIntervalSince1970)
-        let days = Int(seconds / 86_400)
-        let hours = Int(seconds.truncatingRemainder(dividingBy: 86_400)) / 3_600
-        if days > 0 { return "\(days)d \(hours)h" }
-        let minutes = Int(seconds.truncatingRemainder(dividingBy: 3_600)) / 60
-        if hours > 0 { return "\(hours)h \(minutes)m" }
-        return "\(minutes)m"
-    }
-
-    private static let shortFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = .current
-        formatter.setLocalizedDateFormatFromTemplate("MMM d HH:mm")
-        return formatter
-    }()
-
-    private static let hourFormatter: DateFormatter = {
-        let formatter = DateFormatter()
-        formatter.locale = .current
-        formatter.setLocalizedDateFormatFromTemplate("MMM d HH")
-        return formatter
-    }()
 }

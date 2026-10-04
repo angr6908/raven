@@ -35,13 +35,6 @@ final class ProviderDraft: Identifiable {
         apiKey = provider.apiKey
     }
 
-    static func localProxy() -> ProviderDraft {
-        let draft = ProviderDraft()
-        draft.name = LocalProxy.name
-        draft.baseURL = LocalProxy.baseURL
-        return draft
-    }
-
     var fetchPreview: String {
         let trimmed = baseURL.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { return "<base URL>/v1/models" }
@@ -83,29 +76,4 @@ final class ProviderDraft: Identifiable {
             }
         }
     }
-}
-
-@Observable
-final class WindowDraft: Identifiable {
-    let providerID: UUID
-    let modelID: String
-    let advertised: Int?
-    var text: String
-    var useAdvertised = false
-
-    var id: String { "\(providerID)/\(modelID)" }
-
-    init(providerID: UUID, modelID: String, current: Int?, advertised: Int? = nil) {
-        self.providerID = providerID
-        self.modelID = modelID
-        self.advertised = advertised
-        text = String(current ?? ContextWindow.fallback)
-    }
-
-    var tokens: Int? {
-        guard let value = Int(text.trimmingCharacters(in: .whitespaces)), value > 0 else { return nil }
-        return value
-    }
-
-
 }

@@ -40,7 +40,7 @@ private struct ProviderSettings: View {
     var body: some View {
         VStack(spacing: 0) {
             List {
-                ForEach(store.providers) { provider in
+                ForEach(store.customProviders) { provider in
                     HStack(spacing: Space.md) {
                         Glyph(symbol: "server.rack", tint: provider.accent, size: 32)
                         VStack(alignment: .leading, spacing: 2) {
@@ -65,7 +65,7 @@ private struct ProviderSettings: View {
             }
             .listStyle(.inset)
             .overlay {
-                if store.providers.isEmpty {
+                if store.customProviders.isEmpty {
                     EmptyState(symbol: "server.rack", title: "No Providers")
                 }
             }

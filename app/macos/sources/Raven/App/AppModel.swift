@@ -7,13 +7,6 @@ enum Page: Hashable {
     case models, pinned, recents
     case provider(UUID)
     case overview, usage, accounts, routing, pricing
-
-    var isLaunch: Bool {
-        switch self {
-        case .models, .pinned, .recents, .provider: true
-        default: false
-        }
-    }
 }
 
 enum AccountKind: String, Identifiable {
@@ -57,34 +50,17 @@ enum ModelGrouping: String, CaseIterable, Identifiable {
         case .none: "None"
         }
     }
-
-    var title: String {
-        switch self {
-        case .provider: "Provider"
-        case .family: "Model Family"
-        case .none: "No Grouping"
-        }
-    }
 }
 
 enum ModelSort: String, CaseIterable, Identifiable {
     case name, context
 
     var id: String { rawValue }
-
-    var title: String {
-        switch self {
-        case .name: "Name"
-        case .context: "Context Window"
-        }
-    }
 }
 
 struct ModelGroup: Identifiable {
     var id: String
     var title: String
-    var symbol: String
-    var tint: Color
     var items: [ModelItem]
 }
 
@@ -171,13 +147,12 @@ final class AppModel {
 
         switch grouping {
         case .none:
-            return [ModelGroup(id: "all", title: "", symbol: "", tint: .secondary, items: visible)]
+            return [ModelGroup(id: "all", title: "", items: visible)]
         case .family:
             let buckets = Dictionary(grouping: visible) { $0.entry.family }
             return buckets
                 .map { family, items in
-                    ModelGroup(id: "family/\(family.title)", title: family.title, symbol: family.symbol,
-                               tint: family.tint, items: items)
+                    ModelGroup(id: "family/\(family.title)", title: family.title, items: items)
                 }
                 .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
         case .provider:
@@ -185,15 +160,14 @@ final class AppModel {
                 let buckets = Dictionary(grouping: visible) { $0.entry.owner }
                 return buckets
                     .map { owner, items in
-                        ModelGroup(id: "owner/\(owner)", title: owner, symbol: "person.2", tint: .secondary, items: items)
+                        ModelGroup(id: "owner/\(owner)", title: owner, items: items)
                     }
                     .sorted { $0.title.localizedStandardCompare($1.title) == .orderedAscending }
             }
             return store.providers.compactMap { provider in
                 let owned = visible.filter { $0.provider.id == provider.id }
                 return owned.isEmpty ? nil
-                    : ModelGroup(id: "provider/\(provider.id)", title: provider.name, symbol: "server.rack",
-                                 tint: provider.accent, items: owned)
+                    : ModelGroup(id: "provider/\(provider.id)", title: provider.name, items: owned)
             }
         }
     }
@@ -210,10 +184,6 @@ final class AppModel {
 
     func addProvider() {
         sheet = .provider(ProviderDraft())
-    }
-
-    func addLocalProxy() {
-        sheet = .provider(.localProxy())
     }
 
     func edit(_ provider: Provider) {

@@ -179,7 +179,7 @@ struct PricingPage: View {
         guard !models.isEmpty, !editor.fetchingAll else { return }
         editor.fetchingAll = true
         Task {
-            _ = await store.fetchAll(models)
+            await store.fetchAll(models)
             editor.fetchingAll = false
         }
     }

@@ -21,7 +21,6 @@ nonisolated struct UsageTotals {
 
 nonisolated struct UsageModelAgg {
     var model: String
-    var provider: String
     var requests: Int = 0
     var errors: Int = 0
     var input: Double = 0
@@ -38,7 +37,6 @@ nonisolated struct UsageModelAgg {
 
 nonisolated struct UsagePoint {
     var timestamp: String
-    var label: String
     var inputTokens: Double
     var outputTokens: Double
     var totalTokens: Double
@@ -99,7 +97,7 @@ nonisolated enum PanelAggregation {
             let key = r.displayKey
             var m = map[key]
             if m == nil {
-                m = UsageModelAgg(model: key, provider: r.provider ?? "")
+                m = UsageModelAgg(model: key)
                 order.append(key)
             }
             guard var agg = m else { continue }
@@ -131,8 +129,7 @@ nonisolated enum PanelAggregation {
             let ts = PanelFormats.hourBucket(r.timestamp)
             var point = map[ts]
             if point == nil {
-                point = UsagePoint(timestamp: ts, label: PanelFormats.hourLabel(ts),
-                                   inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0, requests: 0)
+                point = UsagePoint(timestamp: ts, inputTokens: 0, outputTokens: 0, totalTokens: 0, cost: 0, requests: 0)
                 order.append(ts)
             }
             guard var bucket = point else { continue }

@@ -3,7 +3,6 @@ import SwiftUI
 struct AddAccountSheet: View {
     let kind: AccountKind
     private let store = AccountsStore.shared
-    @Environment(AppModel.self) private var app
     @Environment(\.dismiss) private var dismiss
     @State private var authJson = ""
     @State private var note = ""

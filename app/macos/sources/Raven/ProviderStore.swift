@@ -63,7 +63,7 @@ final class ProviderStore {
             attributes: [.posixPermissions: 0o700])
     }
 
-    private(set) var providers: [Provider] = []
+    private(set) var providers: [Provider] = [LocalProxy.provider]
     private(set) var models: [UUID: [ModelEntry]] = [:]
     private(set) var windowOverrides: [ModelWindowOverride] = []
     private(set) var pinned: [ModelRef] = []
@@ -104,7 +104,7 @@ final class ProviderStore {
         do {
             let data = try Data(contentsOf: Self.configFile)
             let config = try JSONDecoder().decode(RavenConfig.self, from: data)
-            providers = config.providers
+            providers = [LocalProxy.provider] + config.providers.filter { !$0.isBuiltIn }
             windowOverrides = config.windowOverrides
             pinned = config.pinned
             recents = config.recents
@@ -154,7 +154,7 @@ final class ProviderStore {
 
     private func snapshot() -> RavenConfig {
         RavenConfig(
-            providers: providers,
+            providers: customProviders,
             windowOverrides: windowOverrides,
             selectedProviderID: selection?.providerID,
             selectedModelID: selection?.modelID,
@@ -176,6 +176,10 @@ final class ProviderStore {
         } catch {
             NSLog("raven: could not save config: \(error.localizedDescription)")
         }
+    }
+
+    var customProviders: [Provider] {
+        providers.filter { !$0.isBuiltIn }
     }
 
     func provider(id: UUID) -> Provider? {
@@ -246,16 +250,8 @@ final class ProviderStore {
         return Array(result.prefix(6))
     }
 
-    func isLoading(_ provider: Provider) -> Bool {
-        loading.contains(provider.id)
-    }
-
     func error(for provider: Provider) -> String? {
         errors[provider.id]
-    }
-
-    func refreshedAt(_ provider: Provider) -> Date? {
-        refreshedAt[provider.id]
     }
 
     func status(of provider: Provider) -> ProviderStatus {
@@ -293,15 +289,17 @@ final class ProviderStore {
     }
 
     func moveProviders(from source: IndexSet, to destination: Int) {
+        var custom = customProviders
         var moved: [Provider] = []
         for index in source {
-            moved.append(providers[index])
+            moved.append(custom[index])
         }
         for index in source.reversed() {
-            providers.remove(at: index)
+            custom.remove(at: index)
         }
         let offset = destination - source.filter { $0 < destination }.count
-        providers.insert(contentsOf: moved, at: min(max(offset, 0), providers.count))
+        custom.insert(contentsOf: moved, at: min(max(offset, 0), custom.count))
+        providers = [LocalProxy.provider] + custom
         persist()
     }
 
@@ -346,14 +344,6 @@ final class ProviderStore {
         let override = windowOverride(providerID: item.provider.id, modelID: item.entry.modelID)
         return WindowBadge(label: ContextWindow.label(override ?? item.entry.contextWindow ?? ContextWindow.fallback),
                            isOverride: override != nil)
-    }
-
-    func apply(_ draft: WindowDraft) {
-        if draft.useAdvertised {
-            setWindowOverride(providerID: draft.providerID, modelID: draft.modelID, contextWindow: nil)
-        } else if let tokens = draft.tokens {
-            setWindowOverride(providerID: draft.providerID, modelID: draft.modelID, contextWindow: tokens)
-        }
     }
 
     func isPinned(_ item: ModelItem) -> Bool {

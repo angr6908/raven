@@ -16,7 +16,8 @@ struct SidebarView: View {
             }
 
             Section("Providers") {
-                ForEach(store.providers) { provider in
+                ProviderRow(provider: LocalProxy.provider)
+                ForEach(store.customProviders) { provider in
                     ProviderRow(provider: provider)
                 }
                 .onMove { store.moveProviders(from: $0, to: $1) }
@@ -69,16 +70,27 @@ private struct ProviderRow: View {
             case .loading:
                 ProgressView().controlSize(.small)
             default:
-                Image(systemName: "server.rack").foregroundStyle(provider.accent)
+                if provider.isBuiltIn, let logo = RavenLogo.image {
+                    Image(nsImage: logo)
+                        .renderingMode(.template)
+                        .resizable()
+                        .scaledToFit()
+                        .frame(width: 18, height: 18)
+                        .foregroundStyle(provider.accent)
+                } else {
+                    Image(systemName: "server.rack").foregroundStyle(provider.accent)
+                }
             }
         }
         .tag(Page.provider(provider.id))
         .help("\(provider.host) · \(status.subtitle)")
         .contextMenu {
             Button("Refresh") { app.refresh(provider) }
-            Button("Edit…") { app.edit(provider) }
-            Divider()
-            Button("Remove…", role: .destructive) { app.confirmRemoval(of: provider) }
+            if !provider.isBuiltIn {
+                Button("Edit…") { app.edit(provider) }
+                Divider()
+                Button("Remove…", role: .destructive) { app.confirmRemoval(of: provider) }
+            }
         }
     }
 

@@ -44,10 +44,6 @@ nonisolated struct PanelClient {
         return try decode(T.self, from: data, path: path)
     }
 
-    func getVoid(_ path: String, query: [URLQueryItem] = []) async throws {
-        _ = try await send("GET", path: path, query: query, body: nil, timeout: 20)
-    }
-
     func post<T: Decodable>(_ path: String, json: some Encodable) async throws -> T {
         let data = try await send("POST", path: path, query: [], body: try PanelJSON.encoder.encode(json), timeout: 20)
         return try decode(T.self, from: data, path: path)
