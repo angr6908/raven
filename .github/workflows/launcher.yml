@@ -1,0 +1,49 @@
+name: launcher
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - app/macos/**
+      - .github/workflows/launcher.yml
+  pull_request:
+    paths:
+      - app/macos/**
+      - .github/workflows/launcher.yml
+  workflow_dispatch:
+
+concurrency:
+  group: launcher-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  build:
+    runs-on: xcode-27
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: app/macos
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Download latest core
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release download core-latest --pattern raven-core-macos-arm64.tar.gz --dir "$RUNNER_TEMP/core"
+          tar -xzf "$RUNNER_TEMP/core/raven-core-macos-arm64.tar.gz" -C "$RUNNER_TEMP/core"
+
+      - run: swift build -c release
+
+      - run: scripts/make-app.sh
+        env:
+          CORE_BIN: ${{ runner.temp }}/core/raven
+
+      - run: ditto -c -k --keepParent build/Raven.app build/Raven-macos-arm64.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: Raven-macos-arm64
+          path: app/macos/build/Raven-macos-arm64.zip

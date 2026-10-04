@@ -9,9 +9,12 @@ PARTIAL="$APP_DIR/build/icon-partial.plist"
 ACTOOL="/Applications/Xcode.app/Contents/Developer/usr/bin/actool"
 ICON="$APP_DIR/resources/AppIcon.icon"
 
-CORE_DIR="$(cd "$APP_DIR/../../core" && pwd)"
-(cd "$CORE_DIR" && cargo build --release)
-CORE_BIN="$CORE_DIR/target/release/raven"
+if [ -z "${CORE_BIN:-}" ]; then
+    CORE_DIR="$(cd "$APP_DIR/../../core" && pwd)"
+    (cd "$CORE_DIR" && cargo build --release)
+    CORE_BIN="$CORE_DIR/target/release/raven"
+fi
+[ -x "$CORE_BIN" ] || { echo "error: core binary not found at $CORE_BIN" >&2; exit 1; }
 
 [ -x "$BUILD" ] || { echo "error: run 'swift build -c release' first" >&2; exit 1; }
 [ -x "$ACTOOL" ] || { echo "error: Xcode actool is required" >&2; exit 1; }
