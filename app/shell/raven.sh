@@ -2,14 +2,13 @@
 #
 # Raven launcher.
 #
-# Pick a client (Claude Code / Codex / Grok) and a model, then
+# Pick a client (Claude Code / Codex) and a model, then
 # launch it against the local raven proxy. Also usable from a terminal:
 #
 #   ./raven.sh                        interactive
 #   r                                    launch the saved default combination directly (no pickers)
 #   ./raven.sh claude kimi-k3         launch Claude Code on kimi-k3
 #   ./raven.sh codex minimax-m3 high  launch Codex on minimax-m3, high effort
-#   ./raven.sh grok muse-spark-1.2-contributor@Vercel high  launch grok on the proxy model (web search off)
 #   ./raven.sh claude deepseek/deepseek-v4-flash-free  launch Claude Code on the OrcaRouter free model via the proxy
 #   ./raven.sh codex openai/gpt-5.6-sol    launch Codex on GPT-5.6 Sol (OrcaRouter) via the proxy
 #   ./raven.sh claude deepseek/deepseek-v4-flash-0731  launch Claude Code on the OpenRouter model via the proxy
@@ -65,8 +64,6 @@ cd "$APP_DIR"
 
 PROXY_URL="${PROXY_URL:-http://127.0.0.1:3458}"
 PROXY_KEY="${PROXY_KEY:-claude-code-local}"
-# The wire format grok speaks to the proxy; see grok_real_home_anchor().
-GROK_API_BACKEND="${GROK_API_BACKEND:-responses}"
 SERVICE="com.raven"
 PLIST="$HOME/Library/LaunchAgents/$SERVICE.plist"
 LOG="$HOME/Library/Logs/raven/stderr.log"
@@ -261,209 +258,6 @@ model_window_or_fallback() {
   printf '%s' "${win:-$FALLBACK_CTX_WINDOW}"
 }
 
-# "id<TAB>window" for every model in $1 (comma-separated) that has a window
-# configured in the panel. Models without one are omitted: grok inherits their
-# window from the catalog it fetches (raven advertises `context_window` there),
-# and writing a guess into its per-model pin would outrank that.
-model_windows() {
-  local ids="$1"
-  [ -z "$ids" ] && return 0
-  [ -n "$MODELS_JSON" ] || return 0
-  printf '%s' "$MODELS_JSON" | ruby -rjson -e '
-    ids = ARGV[0].split(",")
-    data = (JSON.parse($stdin.read)["data"] rescue []) || []
-    windows = {}
-    data.each do |m|
-      win = m["max_context_length"]
-      windows[m["id"]] = win if win.is_a?(Integer) && win > 0
-    end
-    ids.each { |id| puts [id, windows[id]].join("\t") if windows[id] }
-  ' "$ids" 2>/dev/null
-}
-
-# grok keeps its model config in per-model [model."<id>"] tables. A proxy model
-# without one has no API key of its own, so grok falls back to session auth and
-# opens the OAuth/device login welcome screen instead of talking to the endpoint
-# the catalog names. Pinning the model to the proxy key makes every launch (and
-# every in-session /model switch) use the Bearer key the proxy accepts.
-#
-# The pin also names the wire format. Grok speaks three (chat_completions,
-# responses, messages) and the proxy serves all three, but only the Responses
-# API carries a turn whole: reasoning replays as its own item with the
-# `encrypted_content` blob that upstream Claude and Gemini models require to
-# accept a signed thought back, a response schema stays on the wire instead of
-# being demoted to a synthetic tool call, and the prompt-cache key survives (on
-# the other two grok cannot send one at all, so its recap/side calls stop
-# sharing the parent turn's cache). The proxy's /v1/models catalog advertises
-# `api_backend: responses` for the same reason; the pin states it outright so
-# the choice does not depend on which build of the proxy answers.
-#
-# Every grok launch runs with the real ~/.grok home; this is what keeps it
-# proxy-routed. The endpoint key and per-model tables are added only when
-# missing (idempotent and append-only), grok preserves [model.*] tables it
-# did not write itself, and a key the user configured manually is left
-# alone. The [models] default is synced to the launcher's chosen model so
-# a bare `grok` from a terminal launches the same proxy default instead of
-# dropping into the OAuth welcome screen. Pins also carry the context window
-# configured for the model in the panel, which is what grok compacts against
-# ("[model.<id>].context_window"; without one grok assumes 200K for a model it
-# does not know). $1 = comma-separated model ids, $2 = default model.
-grok_real_home_anchor() {
-  local ids="$1" def_model="$2" cfg="$HOME/.grok/config.toml"
-  [ -n "$ids" ] || return 0
-  mkdir -p "$(dirname "$cfg")"
-  [ -f "$cfg" ] || : > "$cfg"
-  # "id=window" pairs for the models the panel gave a window to; the rest keep
-  # whatever the fetched catalog says.
-  local windows
-  windows="$(model_windows "$ids" | awk -F'\t' '{printf "%s%s=%s", sep, $1, $2; sep=","}')"
-  ruby -rset -e '
-    path, base, key, backend, ids, def_model, windows = ARGV
-    windows = windows.to_s.split(",").map { |pair|
-      id, win = pair.split("=", 2)
-      [id, win] if id && win && !win.empty?
-    }.compact.to_h
-    ids = ids.split(",").reject(&:empty?)
-    lines = (File.read(path) rescue "").lines
-    text  = lines.join
-    have  = ->(re) { lines.any? { |l| l =~ re } }
-    out   = lines.dup
-    insert_after = ->(header_re, body) {
-      done = false
-      out  = out.flat_map do |line|
-        if !done && line =~ header_re
-          done = true
-          [line, body]
-        else
-          line
-        end
-      end
-    }
-    # Point plain grok at the proxy catalog, API-key auth instead of session
-    # (OAuth) auth.
-    #
-    # A stale value here is worse than none: `[endpoints]` in the file outranks
-    # GROK_MODELS_BASE_URL (grok reads the env var only as the default for a
-    # field the file omits), so a leftover URL from an older proxy port silently
-    # wins over the one this launch exports. grok then cannot fetch a catalog at
-    # all, falls back to whatever `models_cache.json` still holds, and every
-    # model it offers comes from the [model.*] pins below — entries that carry no
-    # effort menu and no real context window, which is what "current model does
-    # not support reasoning effort" means.
-    #
-    # So a loopback URL (this proxy, on whatever port it used to run) is
-    # rewritten to the current one, while a genuinely remote endpoint is left
-    # alone: that is a deliberate choice by whoever set it, not our leftovers.
-    base_line = "models_base_url = \"#{base}\"\n"
-    existing = out.index { |l| l =~ /^\s*models_base_url\s*=/ }
-    if existing
-      current = out[existing][/=\s*"([^"]*)"/, 1].to_s
-      loopback = current.start_with?("http://127.0.0.1", "http://localhost")
-      out[existing] = base_line if loopback && current != base
-    elsif have.call(/^\s*\[endpoints\]\s*$/)
-      insert_after.call(/^\s*\[endpoints\]\s*$/, base_line)
-    else
-      out << "[endpoints]\n#{base_line}"
-    end
-    # Every served model gets a pin, so none of them falls into the OAuth
-    # welcome when picked in a bare grok session.
-    ids.each do |id|
-      next if have.call(/^\s*\[model\.\s*"#{Regexp.escape(id)}"\s*\]\s*$/)
-      pin = "[model.\"#{id}\"]\napi_key = \"#{key}\"\napi_backend = \"#{backend}\"\n"
-      pin += "context_window = #{windows[id]}\n" if windows[id]
-      out << pin
-    end
-    # Bring pins written by an earlier launcher onto the current wire format.
-    # Only tables holding the proxy key are ours to rewrite: a table the user
-    # keyed themselves is their choice, and one pointing at another endpoint
-    # would be broken by it. A pin that never named a backend gets one: the grok
-    # default for an unnamed backend is chat_completions, not what we want.
-    #
-    # One line per element first: the pins appended above (and the [endpoints]
-    # block) are single multi-line strings, and the split below keys on a line
-    # being nothing but a table header.
-    out = out.join.lines
-    blocks = []
-    out.each do |line|
-      if line =~ /^\s*\[[^\]]+\]\s*$/ || blocks.empty?
-        blocks << [line]
-      else
-        blocks.last << line
-      end
-    end
-    # A pin raven wrote for a model the proxy no longer serves is dropped.
-    #
-    # A [model.*] table is itself a catalog entry: grok adds one for every pin,
-    # whether or not the fetched catalog knows the id. A leftover pin therefore
-    # shows up in the picker as a model that cannot be reached, and — having no
-    # catalog entry to inherit from — carries no effort menu and the default
-    # context window. Only pins holding the proxy key are ours to drop.
-    served = ids.to_set
-    ours = lambda do |block|
-      block.first =~ /^\s*\[model\.[^\]]*\]\s*$/ &&
-        block.any? { |l| l =~ /^\s*api_key\s*=\s*"#{Regexp.escape(key)}"\s*$/ }
-    end
-    blocks.reject! do |block|
-      next false unless ours.call(block)
-      id = block.first[/\[model\.\s*"?([^"\]]*?)"?\s*\]/, 1].to_s
-      !served.include?(id)
-    end
-    blocks.each do |block|
-      next unless ours.call(block)
-      idx = block.index { |l| l =~ /^\s*api_backend\s*=/ }
-      if idx
-        block[idx] = "api_backend = \"#{backend}\"\n"
-      else
-        block.insert(1, "api_backend = \"#{backend}\"\n")
-      end
-      # Keep the compaction window in step with the panel. A pin outranks the
-      # fetched catalog, so a window we wrote for a model the panel has since
-      # cleared is dropped rather than left to outrank the catalog with a
-      # stale number.
-      id  = block.first[/\[model\.\s*"?([^"\]]*?)"?\s*\]/, 1].to_s
-      at  = block.index { |l| l =~ /^\s*context_window\s*=/ }
-      win = windows[id]
-      if win
-        line = "context_window = #{win}\n"
-        at ? block[at] = line : block.insert(1, line)
-      elsif at
-        block.delete_at(at)
-      end
-    end
-    out = blocks.flatten
-    # Keep the default model in step with data/shell-defaults.conf.
-    set_default = lambda do |m|
-      idx = out.index { |l| l =~ /^\s*\[models\]\s*$/ }
-      unless idx
-        out << "[models]\ndefault = \"#{m}\"\n"
-        next
-      end
-      replaced = false
-      (idx + 1...out.length).each do |i|
-        break if i > idx && out[i] =~ /^\s*\[/
-        if out[i] =~ /^\s*default\s*=/
-          out[i] = "default = \"#{m}\"\n"
-          replaced = true
-          break
-        end
-      end
-      out.insert(idx + 1, "default = \"#{m}\"\n") unless replaced
-    end
-    set_default.call(def_model)
-    File.write(path, out.join) unless out.join == text
-  ' "$cfg" "$PROXY_URL/v1" "$PROXY_KEY" "$GROK_API_BACKEND" "$ids" "$def_model" "$windows"
-}
-
-# The API key for the proxy is written into a file only the launcher can read,
-# and models.yml references it via a `!cmd` that re-reads it on every launch —
-# so the generated store never carries a copy of the secret, and a fresh key is
-# picked up without a rewrite. $1 is the comma-separated model list to publish.
-KEYFILE="${PROXY_KEY_FILE:-$ROOT_DIR/data/.raven-key}"
-write_keyfile() {
-  umask 077
-  printf '%s\n' "$PROXY_KEY" > "$KEYFILE"
-}
-
 # Codex records the settings a session ran under, and its resume picker hides
 # sessions whose cwd is not the current one. Recovering cwd/model/effort from the
 # rollout means resuming by id needs neither --dir nor the model retyped, and the
@@ -491,13 +285,11 @@ edit_defaults() {
   echo "  Pick a client:"
   echo "  1) Claude Code"
   echo "  2) Codex"
-  echo "  3) grok"
   echo
   read -r -p "client [${DEF_CLIENT:-1}]: " reply
   case "${reply:-$DEF_CLIENT}" in
     1|claude|claude-code) CLIENT=claude ;;
     2|codex)              CLIENT=codex ;;
-    3|grok|grok-cli)      CLIENT=grok ;;
     *) die "unknown client: $reply" ;;
   esac
   echo
@@ -528,11 +320,6 @@ edit_defaults() {
   printf 'client=%s\nmodel=%s\n' "$CLIENT" "$MODEL" > "$DEFAULTS"
   DEF_CLIENT="$CLIENT"
   DEF_MODEL="$MODEL"
-  # Keep a bare `grok` in step with the saved pair: the real ~/.grok config
-  # gets the endpoint, pins and default model, so plain `grok` launches it.
-  if [ "$CLIENT" = grok ]; then
-    grok_real_home_anchor "$MODEL" "$MODEL"
-  fi
   printf '\033[2m   default saved: %s on %s\033[0m\n' "$CLIENT" "$MODEL"
   # Editing the default is its own action: save and stop, don't launch.
   exit 0
@@ -603,7 +390,6 @@ if [ -z "$CLIENT" ]; then
   echo "  0) Edit Default"
   echo "  1) Claude Code"
   echo "  2) Codex"
-  echo "  3) grok"
   echo
   read -r -p "client [${DEF_CLIENT:-1}]: " reply
   # A blank reply means "use the saved default". Remember that so the model
@@ -615,7 +401,6 @@ if [ -z "$CLIENT" ]; then
     0) edit_defaults ;;
     1|claude|claude-code)        CLIENT=claude ;;
     2|codex)                     CLIENT=codex ;;
-    3|grok)                      CLIENT=grok ;;
     *) die "unknown client: $reply" ;;
   esac
 fi
@@ -623,8 +408,7 @@ fi
 case "$CLIENT" in
   claude|claude-code)                CLIENT=claude ;;
   codex)                             CLIENT=codex ;;
-  grok|grok-cli)                     CLIENT=grok ;;
-  *) die "unknown client: $CLIENT (expected 'claude', 'codex' or 'grok')" ;;
+  *) die "unknown client: $CLIENT (expected 'claude' or 'codex')" ;;
 esac
 
 # Resuming a known id: recover what the session ran under, so only an explicit
@@ -766,7 +550,6 @@ fi
 case "$CLIENT" in
   claude)   CLIENT_NAME='Claude Code' ;;
   codex)    CLIENT_NAME=Codex ;;
-  grok)     CLIENT_NAME=Grok ;;
 esac
 
 printf '\n\033[1m→ %s\033[0m on \033[1m%s\033[0m%s\n' \
@@ -837,59 +620,6 @@ if [ "$CLIENT" = claude ]; then
     set -- "$@" --effort "$EFFORT"
   fi
   exec claude "$@"
-elif [ "$CLIENT" = grok ]; then
-  # Grok is pointed at the proxy's OpenAI Responses endpoint
-  # (api_backend = "responses"), which is the wire format its own models are
-  # served over and the only one of the three that carries a whole turn — see
-  # grok_real_home_anchor() for what the other two drop. Auth is a plain Bearer
-  # API key either way. It runs with the real ~/.grok home: the anchor below
-  # pins the endpoint and every served model (the backend + the proxy key) into
-  # ~/.grok/config.toml, so this launch and a bare `grok` from a terminal both
-  # talk to the proxy instead of the xAI OAuth welcome screen. No per-launch
-  # runtime home is created.
-  export GROK_MODELS_BASE_URL="$PROXY_URL/v1"
-  export XAI_API_KEY="$PROXY_KEY"
-
-  # Every launch starts from the proxy's live catalog, never a remembered one.
-  # grok caches the fetched model list in ~/.grok/models_cache.json for five
-  # minutes, so without this a model or effort level changed in the panel would
-  # not show up until the cache aged out. It is a cache and nothing else: grok
-  # refetches it from the endpoint below, one request to localhost.
-  /bin/rm -f "$HOME/.grok/models_cache.json"
-
-  # Keep the real ~/.grok config in step with the proxy catalog: the
-  # endpoint base URL and per-model api_key pins are appended only when
-  # missing (existing keys are never overwritten, so a manually set PIN is
-  # left alone), and the default model is synced to the launcher's choice.
-  # Idempotent, so a bare `grok` stays proxy-routed too.
-  grok_real_home_anchor "$(printf '%s\n' "$MODELS_RAW" | cut -f1 | paste -sd, -)" "$MODEL"
-
-  # The proxy's /v1/models list is what Grok catalogues from
-  # GROK_MODELS_BASE_URL, so the picked alias/id maps straight onto --model.
-  set -- --model "$MODEL"
-
-  # Web search is disabled for grok sessions: the proxy's translated models
-  # cannot drive Grok's hosted search, and it is wanted off regardless.
-  set -- "$@" --disable-web-search
-
-  # grok's embedded "Tool search" (search_tool) discovers MCP/integration tool
-  # schemas; the proxy's translated models don't need it. --disallowed-tools
-  # search_tool drops it from the callable set (verified: the tool no longer
-  # appears; DISABLE_EMBEDDED_SEARCH_TOOLS alone did not remove it in 1.0.5).
-  set -- "$@" --disallowed-tools search_tool
-
-  if [ -n "$EFFORT" ]; then
-    # Grok's canonical effort levels (none..max) match the thinking levels
-    # config.yaml declares, so the same effort slot used by the other clients
-    # maps straight onto --reasoning-effort (alias: --effort).
-    set -- "$@" --reasoning-effort "$EFFORT"
-  fi
-  # grok splits resume like the other clients: a bare --resume continues the
-  # most recent session for this directory, --resume <id> names a session.
-  if [ -n "$RESUME" ]; then
-    if [ "$RESUME" = picker ]; then set -- "$@" --resume; else set -- "$@" --resume "$RESUME"; fi
-  fi
-  exec grok "$@"
 else
   # Codex speaks the Responses API natively. Every model goes through raven,
   # which translates the Responses API to the appropriate upstream protocol
