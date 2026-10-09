@@ -38,6 +38,12 @@ nonisolated struct ModelEntry: Identifiable, Codable, Hashable {
         case contextWindowAlias = "context_window"
     }
 
+    init(modelID: String, ownedBy: String? = nil, contextWindow: Int? = nil) {
+        self.modelID = modelID
+        self.ownedBy = ownedBy
+        self.contextWindow = contextWindow
+    }
+
     init(from decoder: Decoder) throws {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         modelID = try container.decode(String.self, forKey: .modelID)
@@ -146,22 +152,6 @@ nonisolated struct ModelWindowOverride: Codable, Hashable {
     var contextWindow: Int
 }
 
-nonisolated struct RecentLaunch: Identifiable, Codable, Hashable {
-    var id = UUID()
-    var providerID: UUID
-    var modelID: String
-    var client: ProviderKind
-    var workdir: String
-    var date: Date
-
-    var ref: ModelRef { ModelRef(providerID: providerID, modelID: modelID) }
-
-    var folderName: String {
-        let name = URL(filePath: workdir, directoryHint: .isDirectory).lastPathComponent
-        return name.isEmpty ? workdir : name
-    }
-}
-
 nonisolated struct WindowBadge: Hashable {
     var label: String
     var isOverride: Bool
@@ -209,23 +199,11 @@ nonisolated enum ContextWindow {
     static let presets = [128_000, 200_000, 256_000, 400_000, 1_000_000]
 
     static func label(_ tokens: Int) -> String {
-        let thousand = 1_000, million = 1_000_000
-        if tokens >= million {
-            if tokens % million == 0 { return "\(tokens / million)M ctx" }
-            var text = String(format: "%.2f", Double(tokens) / Double(million))
-            while text.hasSuffix("0") { text.removeLast() }
-            if text.hasSuffix(".") { text.removeLast() }
-            return "\(text)M ctx"
-        }
-        if tokens >= thousand, tokens % thousand == 0 { return "\(tokens / thousand)K ctx" }
-        return "\(tokens) ctx"
+        compact(tokens) + " ctx"
     }
 
     static func compact(_ tokens: Int) -> String {
-        let thousand = 1_000, million = 1_000_000
-        if tokens >= million, tokens % million == 0 { return "\(tokens / million)M" }
-        if tokens >= thousand, tokens % thousand == 0 { return "\(tokens / thousand)K" }
-        return tokens.formatted(.number.grouping(.automatic))
+        PanelFormats.formatContextWindow(tokens)
     }
 }
 

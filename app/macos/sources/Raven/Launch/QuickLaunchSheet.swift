@@ -10,16 +10,13 @@ struct QuickLaunchSheet: View {
     private var results: [ModelItem] {
         let needle = text.trimmingCharacters(in: .whitespaces).lowercased()
         let pinned = Set(store.pinned)
-        let recentRefs = store.recents.map(\.ref)
         func priority(_ item: ModelItem) -> Int {
-            if pinned.contains(item.ref) { return 0 }
-            if recentRefs.contains(item.ref) { return 1 }
-            return 2
+            pinned.contains(item.ref) ? 0 : 1
         }
         let filtered = store.libraryItems.filter { item in
             needle.isEmpty
                 || item.entry.modelID.lowercased().contains(needle)
-                || item.provider.name.lowercased().contains(needle)
+                || app.providerTitle(item).lowercased().contains(needle)
                 || item.entry.owner.lowercased().contains(needle)
         }
         let ranked = filtered.sorted { lhs, rhs in
@@ -111,6 +108,7 @@ struct QuickLaunchSheet: View {
 }
 
 private struct QuickRow: View {
+    @Environment(AppModel.self) private var app
     @Environment(ProviderStore.self) private var store
     let item: ModelItem
 
@@ -125,7 +123,7 @@ private struct QuickRow: View {
             if store.isPinned(item) {
                 Image(systemName: "pin.fill").imageScale(.small).foregroundStyle(.orange)
             }
-            Text(item.provider.name)
+            Text(app.providerTitle(item))
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
         }

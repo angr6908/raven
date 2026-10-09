@@ -103,7 +103,6 @@ struct OverviewPage: View {
             }
         }
         .navigationTitle("Overview")
-        .navigationSubtitle(subtitle)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Picker("Range", selection: $range) {
@@ -121,11 +120,6 @@ struct OverviewPage: View {
             try? await Task.sleep(for: .seconds(2))
             loaded = true
         }
-    }
-
-    private var subtitle: String {
-        guard !usage.records.isEmpty else { return "" }
-        return "\(snapshot.count) requests · \(range.title)"
     }
 
     private var metrics: some View {

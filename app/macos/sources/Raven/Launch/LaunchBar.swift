@@ -7,21 +7,10 @@ extension View {
 }
 
 private struct LaunchChrome: ViewModifier {
-    @Environment(ProviderStore.self) private var store
-
     func body(content: Content) -> some View {
         content
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 LaunchBar()
-            }
-            .toolbar {
-                ToolbarItem(placement: .principal) {
-                    Picker("Client", selection: Binding(get: { store.client }, set: { store.client = $0 })) {
-                        ForEach(ProviderKind.allCases) { Text($0.displayName).tag($0) }
-                    }
-                    .pickerStyle(.segmented)
-                    .help("Which client to start")
-                }
             }
     }
 }
@@ -36,6 +25,13 @@ struct LaunchBar: View {
         HStack(spacing: Space.lg) {
             target
             Spacer(minLength: Space.md)
+            Picker("Client", selection: Binding(get: { store.client }, set: { store.client = $0 })) {
+                ForEach(ProviderKind.allCases) { Text($0.displayName).tag($0) }
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .fixedSize()
+            .help("Which client to start")
             FolderMenu()
             if let item = store.selectedItem {
                 contextMenu(item)
@@ -79,7 +75,7 @@ struct LaunchBar: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .textSelection(.enabled)
-                    Text(item.provider.name)
+                    Text(app.providerTitle(item))
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -116,7 +112,7 @@ struct LaunchBar: View {
                 case .reported: store.setWindowOverride(item.ref, tokens: nil)
                 case .preset(let tokens): store.setWindowOverride(item.ref, tokens: tokens)
                 case .custom:
-                    customText = override.map(ContextWindow.compact) ?? ""
+                    customText = override.map(String.init) ?? ""
                     customWindow = true
                 }
             })) {

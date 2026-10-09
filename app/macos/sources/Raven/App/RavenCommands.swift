@@ -56,29 +56,23 @@ struct RavenCommands: Commands {
 
             Divider()
 
-            Button("Edit Provider…") {
-                if let provider = model.activeProvider { model.edit(provider) }
-            }
-            .keyboardShortcut("e", modifiers: .command)
-            .disabled(model.activeProvider?.isBuiltIn ?? true)
+            Button("Edit Provider…") { model.editCurrentProvider() }
+                .keyboardShortcut("e", modifiers: .command)
+                .disabled(!model.canEditProvider)
 
-            Button("Remove Provider…") {
-                if let provider = model.activeProvider { model.confirmRemoval(of: provider) }
-            }
-            .disabled(model.activeProvider?.isBuiltIn ?? true)
+            Button("Remove Provider…") { model.removeCurrentProvider() }
+                .disabled(!model.canEditProvider)
         }
 
         CommandGroup(after: .sidebar) {
             Divider()
             pageButton("Models", .models, "1")
             pageButton("Pinned", .pinned, "2")
-            pageButton("Recents", .recents, "3")
             Divider()
-            pageButton("Overview", .overview, "4")
-            pageButton("Usage", .usage, "5")
-            pageButton("Accounts", .accounts, "6")
-            pageButton("Routing", .routing, "7")
-            pageButton("Pricing", .pricing, "8")
+            pageButton("Overview", .overview, "3")
+            pageButton("Usage", .usage, "4")
+            pageButton("Accounts", .accounts, "5")
+            pageButton("Pricing", .pricing, "6")
             Divider()
         }
     }

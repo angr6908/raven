@@ -111,7 +111,6 @@ struct UsagePage: View {
             }
         }
         .navigationTitle("Usage")
-        .navigationSubtitle(subtitle)
         .toolbar {
             ToolbarItem(placement: .principal) {
                 Picker("View", selection: $mode) {
@@ -152,10 +151,6 @@ struct UsagePage: View {
             usage.start()
             routing.start()
         }
-    }
-
-    private var subtitle: String {
-        usage.records.isEmpty ? "" : "\(usage.records.count) requests"
     }
 
     private var providerSignature: String {

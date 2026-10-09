@@ -23,6 +23,16 @@ struct RootView: View {
         } message: { provider in
             Text("Raven forgets \(provider.name)'s base URL and API key, along with its pins and context window overrides.")
         }
+        .confirmationDialog("Remove this provider?", isPresented: Binding(
+            get: { app.sourceRemoval != nil }, set: { if !$0 { app.sourceRemoval = nil } }),
+            presenting: app.sourceRemoval) { id in
+            Button("Remove \(ProvidersPanelStore.shared.title(of: .provider(id)))", role: .destructive) {
+                app.removePendingSource()
+            }
+        } message: { id in
+            let count = ProvidersPanelStore.shared.entry(.provider(id))?.models.count ?? 0
+            Text(count == 0 ? "This can't be undone." : "Its \(count == 1 ? "model stops" : "\(count) models stop") routing.")
+        }
         .alert("Couldn't launch", item: $app.launchError) { _ in
             Button("OK", role: .cancel) {}
         } message: { message in
@@ -39,12 +49,10 @@ private struct DetailRouter: View {
 
     var body: some View {
         switch app.page {
-        case .models, .pinned, .provider: ModelsPage()
-        case .recents: RecentsPage()
+        case .models, .pinned, .provider, .source: ModelsPage()
         case .overview: OverviewPage()
         case .usage: UsagePage()
         case .accounts: AccountsPage()
-        case .routing: RoutingPage()
         case .pricing: PricingPage()
         }
     }

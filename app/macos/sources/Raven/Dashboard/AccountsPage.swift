@@ -23,7 +23,6 @@ struct AccountsPage: View {
         }
         .formStyle(.grouped)
         .navigationTitle("Accounts")
-        .navigationSubtitle(subtitle)
         .confirmationDialog("Remove this account?", isPresented: Binding(
             get: { removing != nil }, set: { if !$0 { removing = nil } }), presenting: removing) { account in
             Button("Remove \(account.name)", role: .destructive) {
@@ -34,11 +33,6 @@ struct AccountsPage: View {
         }
         .onAppear { store.start() }
         .onDisappear { store.stop() }
-    }
-
-    private var subtitle: String {
-        let count = store.workbuddyAccounts.count + store.antigravityAccounts.count
-        return count == 0 ? "" : (count == 1 ? "1 account" : "\(count) accounts")
     }
 }
 

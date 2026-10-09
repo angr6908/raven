@@ -53,7 +53,7 @@ struct ContextDecodeTests {
         #expect(ContextWindow.label(1_050_000) == "1.05M ctx")
         #expect(ContextWindow.label(200_000) == "200K ctx")
         #expect(ContextWindow.label(1_000_000) == "1M ctx")
-        #expect(ContextWindow.label(1500) == "1500 ctx")
+        #expect(ContextWindow.label(1500) == "2K ctx")
     }
 }
 

@@ -57,7 +57,6 @@ struct PricingPage: View {
             }
         }
         .navigationTitle("Pricing")
-        .navigationSubtitle(subtitle(all))
         .searchable(text: $app.search, placement: .toolbar, prompt: "Filter models")
         .toolbar {
             ToolbarItem(placement: .primaryAction) {
@@ -152,12 +151,6 @@ struct PricingPage: View {
         .overlay {
             if rows.isEmpty { ContentUnavailableView.search(text: app.search) }
         }
-    }
-
-    private func subtitle(_ all: [PricingRowData]) -> String {
-        guard !store.loading, !all.isEmpty else { return "" }
-        let unpriced = all.filter(\.needsPrice).count
-        return unpriced > 0 ? "\(all.count) models · \(unpriced) unpriced" : "\(all.count) models"
     }
 
     private var saveFailure: String? {

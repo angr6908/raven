@@ -27,7 +27,7 @@ enum ModelsClient {
         var lastError: Error = ModelsClientError.badURL
         for url in candidates {
             do {
-                return try await fetchModels(at: url, apiKey: provider.apiKey)
+                return try await fetch(at: url, apiKey: provider.apiKey)
             } catch {
                 lastError = error
             }
@@ -35,7 +35,7 @@ enum ModelsClient {
         throw lastError
     }
 
-    private static func fetchModels(at urlString: String, apiKey: String) async throws -> [ModelEntry] {
+    static func fetch(at urlString: String, apiKey: String) async throws -> [ModelEntry] {
         guard let url = URL(string: urlString) else { throw ModelsClientError.badURL }
         var request = URLRequest(url: url, timeoutInterval: 15)
         if !apiKey.isEmpty {

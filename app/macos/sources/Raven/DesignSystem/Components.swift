@@ -75,9 +75,16 @@ struct FamilyGlyph: View {
     }
 }
 
-enum RavenLogo {
-    static let image: NSImage? = Bundle.main.url(forResource: "RavenLogo", withExtension: "svg")
-        .flatMap(NSImage.init(contentsOf:))
+enum ChannelLogo {
+    private static var cache: [String: NSImage?] = [:]
+
+    static func image(_ kind: String) -> NSImage? {
+        if let cached = cache[kind] { return cached }
+        let image = Bundle.main.url(forResource: kind, withExtension: "png", subdirectory: "Logos")
+            .flatMap(NSImage.init(contentsOf:))
+        cache[kind] = .some(image)
+        return image
+    }
 }
 
 struct FamilyLogo {
@@ -312,10 +319,10 @@ struct HealthBadge: View {
 
     static func state(live: Bool, up: Bool, dropped: Int) -> (label: String, tint: Color, help: String) {
         if live && dropped > 0 {
-            return ("Proxy · stale", .yellow, "Live feed degraded — counts reflect the last full snapshot")
+            return ("Delayed", .yellow, "Raven is running, but the live usage feed dropped updates — counts reflect the last full snapshot")
         }
-        if live { return ("Proxy · live", .green, "Proxy is up and streaming usage") }
-        if up { return ("Proxy · up", .green, "Proxy is up") }
-        return ("Proxy offline", .red, "Proxy unreachable on :3458")
+        if live { return ("Running", .green, "Raven is running and streaming usage") }
+        if up { return ("Running", .green, "Raven is running") }
+        return ("Offline", .red, "Raven isn't reachable on :3458")
     }
 }

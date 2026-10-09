@@ -27,7 +27,6 @@ mkdir -p "$BUNDLE/Contents/MacOS" "$BUNDLE/Contents/Resources"
 cp "$BUILD" "$BUNDLE/Contents/MacOS/Raven"
 cp "$CORE_BIN" "$BUNDLE/Contents/Resources/raven"
 cp -R "$APP_DIR/resources/Logos" "$BUNDLE/Contents/Resources/Logos"
-cp "$APP_DIR/resources/RavenLogo.svg" "$BUNDLE/Contents/Resources/RavenLogo.svg"
 
 DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer \
     "$ACTOOL" "$ICON" \

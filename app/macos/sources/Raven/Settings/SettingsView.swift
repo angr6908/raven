@@ -87,10 +87,6 @@ private struct DataSettings: View {
     var body: some View {
         Form {
             Section {
-                LabeledContent("Recent launches") {
-                    Button("Clear") { store.clearRecents() }
-                        .disabled(store.recents.isEmpty)
-                }
                 LabeledContent("Context window overrides") {
                     Button("Reset All") { store.clearWindowOverrides() }
                         .disabled(store.windowOverrides.isEmpty)

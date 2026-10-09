@@ -3,6 +3,7 @@ import SwiftUI
 struct ModelsPage: View {
     @Environment(AppModel.self) private var app
     @Environment(ProviderStore.self) private var store
+    private let panel = ProvidersPanelStore.shared
     @AppStorage("models.grouping") private var grouping = ModelGrouping.provider
     @AppStorage("models.sort") private var sort = ModelSort.name
 
@@ -11,9 +12,9 @@ struct ModelsPage: View {
         let groups = app.groups(on: app.page, grouping: grouping, sort: sort)
         content(groups)
             .navigationTitle(app.title(for: app.page))
-            .navigationSubtitle(subtitle(groups))
             .searchable(text: $app.search, placement: .toolbar, prompt: "Search models")
             .launchChrome()
+            .routedChrome(app.focusedSource)
             .toolbar {
                 ToolbarItem(placement: .primaryAction) {
                     Picker("Group By", selection: $grouping) {
@@ -27,7 +28,15 @@ struct ModelsPage: View {
 
     @ViewBuilder
     private func content(_ groups: [ModelGroup]) -> some View {
-        if let provider = app.focusedProvider, let message = store.error(for: provider) {
+        if app.focusedSource != nil, panel.providers == nil {
+            if let error = panel.error {
+                EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't Load Providers", message: error) {
+                    Button("Try Again") { panel.reload() }
+                }
+            } else {
+                LoadingState(message: "Loading providers…")
+            }
+        } else if let provider = app.focusedProvider, let message = store.error(for: provider) {
             EmptyState(symbol: "wifi.exclamationmark",
                        title: "Couldn't Reach \(provider.name)",
                        message: message) {
@@ -40,7 +49,7 @@ struct ModelsPage: View {
                     }
                 }
             }
-        } else if store.isRefreshing && store.modelCount == 0 {
+        } else if app.focusedSource == nil, store.isRefreshing && store.modelCount == 0 {
             LoadingState(message: "Loading models…")
         } else if groups.isEmpty {
             if app.isSearching {
@@ -49,7 +58,8 @@ struct ModelsPage: View {
                 emptyState
             }
         } else {
-            ModelList(groups: groups, showsProvider: grouping != .provider && store.providers.count > 1)
+            ModelList(groups: groups, source: app.focusedSource,
+                      showsProvider: grouping != .provider && app.focusedSource == nil && app.focusedProvider == nil)
         }
     }
 
@@ -59,6 +69,24 @@ struct ModelsPage: View {
         case .pinned:
             EmptyState(symbol: "pin", title: "No Pinned Models",
                        message: "Pin the models you reach for most and they'll collect here.")
+        case .source(let source):
+            if panel.syncing.contains(source) {
+                LoadingState(message: "Fetching the catalog…")
+            } else if let message = panel.syncErrors[source] {
+                EmptyState(symbol: "wifi.exclamationmark", title: "Couldn't Fetch the Catalog", message: message) {
+                    Button("Try Again") { panel.sync(source) }
+                }
+            } else if case .provider(let id) = source, panel.blocked(source) {
+                EmptyState(symbol: "exclamationmark.triangle", title: "Connection Incomplete",
+                           message: "Finish the connection to load this provider's catalog.") {
+                    Button("Edit…") { app.edit(upstream: id) }
+                }
+            } else {
+                EmptyState(symbol: "tray", title: "No Models",
+                           message: "\(panel.title(of: source))'s catalog returned no models.") {
+                    Button("Try Again") { panel.sync(source) }
+                }
+            }
         case .provider:
             EmptyState(symbol: "tray", title: "No Models",
                        message: "\(app.focusedProvider?.name ?? "This provider") returned an empty model list.") {
@@ -73,18 +101,14 @@ struct ModelsPage: View {
             }
         }
     }
-
-    private func subtitle(_ groups: [ModelGroup]) -> String {
-        let shown = groups.reduce(0) { $0 + $1.items.count }
-        if app.isSearching { return shown == 1 ? "1 match" : "\(shown) matches" }
-        return shown == 1 ? "1 model" : "\(shown) models"
-    }
 }
 
 private struct ModelList: View {
     @Environment(AppModel.self) private var app
     @Environment(ProviderStore.self) private var store
+    private let panel = ProvidersPanelStore.shared
     let groups: [ModelGroup]
+    let source: RouteSource?
     let showsProvider: Bool
 
     var body: some View {
@@ -92,7 +116,8 @@ private struct ModelList: View {
             ForEach(groups) { group in
                 Section {
                     ForEach(group.items) { item in
-                        ModelRow(item: item, showsProvider: showsProvider).tag(item.ref)
+                        ModelRow(item: item, showsProvider: showsProvider, source: source, status: status(item))
+                            .tag(item.ref)
                     }
                 } header: {
                     if !group.title.isEmpty { Text(group.title) }
@@ -101,12 +126,18 @@ private struct ModelList: View {
         }
         .listStyle(.inset)
         .contextMenu(forSelectionType: ModelRef.self) { refs in
-            if let item = refs.first.flatMap({ store.item($0) }) {
+            if let ref = refs.first, let item = groups.lazy.flatMap(\.items).first(where: { $0.ref == ref }) {
                 ModelMenu(item: item)
+                if let source { RoutedModelMenu(source: source, item: item) }
             }
         } primaryAction: { refs in
             if let ref = refs.first { app.launch(ref) }
         }
+    }
+
+    private func status(_ item: ModelItem) -> RouteStatus? {
+        guard let source, let index = panel.modelIndex(source, clientID: item.entry.modelID) else { return nil }
+        return panel.status(source, model: index)
     }
 
     private var selection: Binding<ModelRef?> {
@@ -115,9 +146,12 @@ private struct ModelList: View {
 }
 
 private struct ModelRow: View {
+    @Environment(AppModel.self) private var app
     @Environment(ProviderStore.self) private var store
     let item: ModelItem
     let showsProvider: Bool
+    let source: RouteSource?
+    let status: RouteStatus?
 
     var body: some View {
         HStack(spacing: Space.md) {
@@ -128,12 +162,20 @@ private struct ModelRow: View {
                     .lineLimit(1)
                     .truncationMode(.middle)
                 if showsProvider {
-                    Text(item.provider.name).font(.subheadline).foregroundStyle(.secondary)
+                    Text(app.providerTitle(item)).font(.subheadline).foregroundStyle(.secondary)
                 }
             }
             Spacer(minLength: Space.sm)
+            if let status, status.isProblem {
+                Image(systemName: status.symbol)
+                    .foregroundStyle(status.tint)
+                    .help("\(status.title). \(status.explanation)")
+            }
             if store.isPinned(item) {
                 Image(systemName: "pin.fill").imageScale(.small).foregroundStyle(.orange)
+            }
+            if let source {
+                ReasoningBadge(source: source, item: item)
             }
             Text(store.windowBadge(for: item).label.replacingOccurrences(of: " ctx", with: ""))
                 .font(.figure)

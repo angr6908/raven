@@ -10,15 +10,16 @@ struct ProviderSheet: View {
             Form {
                 Section("Provider") {
                     TextField("Name", text: $draft.name, prompt: Text("My provider"))
-                    TextField("Base URL", text: $draft.baseURL, prompt: Text(LocalProxy.baseURL))
+                    TextField("Base URL", text: $draft.baseURL,
+                              prompt: Text(verbatim: draft.viaRaven ? "https://api.example.com/v1" : LocalProxy.baseURL))
                         .font(.identifier)
                     LabeledContent("API Key") {
                         HStack(spacing: Space.sm) {
                             Group {
                                 if draft.revealKey {
-                                    TextField("API Key", text: $draft.apiKey, prompt: Text("Optional"))
+                                    TextField("API Key", text: $draft.apiKey, prompt: Text(keyPrompt))
                                 } else {
-                                    SecureField("API Key", text: $draft.apiKey, prompt: Text("Optional"))
+                                    SecureField("API Key", text: $draft.apiKey, prompt: Text(keyPrompt))
                                 }
                             }
                             .labelsHidden()
@@ -31,6 +32,27 @@ struct ProviderSheet: View {
                             .buttonStyle(.borderless)
                             .help(draft.revealKey ? "Hide key" : "Reveal key")
                         }
+                    }
+                }
+
+                Section {
+                    Toggle("Route through Raven", isOn: $draft.viaRaven)
+                    if draft.viaRaven {
+                        Picker("Protocol", selection: $draft.kind) {
+                            Text("Chat Completions").tag("openai")
+                            Text("Responses").tag("responses")
+                        }
+                    }
+                } footer: {
+                    Text(routingNote)
+                }
+
+                if draft.viaRaven {
+                    Section("Spare Keys") {
+                        ForEach(draft.spareKeys.indices, id: \.self) { index in
+                            SpareKeyRow(draft: draft, index: index)
+                        }
+                        Button("Add Spare Key") { draft.spareKeys.append(ApiKeyEntry(apiKey: "")) }
                     }
                 }
 
@@ -66,7 +88,60 @@ struct ProviderSheet: View {
                 }
             }
         }
-        .frame(width: 520, height: 430)
+        .frame(width: 520, height: 560)
+    }
+
+    private var keyPrompt: String {
+        draft.viaRaven ? "sk-…" : "Optional"
+    }
+
+    private var routingNote: String {
+        if draft.upstreamID != nil, !draft.viaRaven {
+            return "Saving stops Raven from routing this provider, and its model list is removed."
+        }
+        if draft.isEditing, draft.upstreamID == nil, draft.viaRaven {
+            return "Saving moves this provider into Raven, and its pins and context overrides are removed."
+        }
+        return draft.viaRaven
+            ? "Raven translates requests for Claude Code and Codex."
+            : "Claude Code and Codex connect to this endpoint directly, so it must speak their APIs."
+    }
+}
+
+private struct SpareKeyRow: View {
+    @Bindable var draft: ProviderDraft
+    let index: Int
+
+    var body: some View {
+        HStack(spacing: Space.sm) {
+            Group {
+                if draft.revealKey {
+                    TextField("Spare Key \(index + 1)", text: binding, prompt: Text(verbatim: "sk-…"))
+                } else {
+                    SecureField("Spare Key \(index + 1)", text: binding, prompt: Text(verbatim: "sk-…"))
+                }
+            }
+            .font(.identifier)
+            Menu {
+                Button("Make Active") { draft.makeActive(index) }
+                Button("Remove Key", systemImage: "trash", role: .destructive) {
+                    if draft.spareKeys.indices.contains(index) { draft.spareKeys.remove(at: index) }
+                }
+            } label: {
+                Image(systemName: "ellipsis.circle")
+            }
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
+            .menuIndicator(.hidden)
+            .fixedSize()
+            .help("More")
+        }
+    }
+
+    private var binding: Binding<String> {
+        Binding(
+            get: { draft.spareKeys.indices.contains(index) ? draft.spareKeys[index].apiKey : "" },
+            set: { if draft.spareKeys.indices.contains(index) { draft.spareKeys[index].apiKey = $0 } })
     }
 }
 

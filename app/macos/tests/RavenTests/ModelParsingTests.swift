@@ -136,7 +136,9 @@ struct ModelParsingTests {
     @Test func contextWindowLabels() {
         #expect(ContextWindow.label(200_000) == "200K ctx")
         #expect(ContextWindow.label(1_000_000) == "1M ctx")
-        #expect(ContextWindow.label(1_500) == "1500 ctx")
+        #expect(ContextWindow.label(1_500) == "2K ctx")
+        #expect(ContextWindow.label(131_072) == "131K ctx")
+        #expect(ContextWindow.compact(131_072) == "131K")
     }
 
     @Test func shellQuoting() {

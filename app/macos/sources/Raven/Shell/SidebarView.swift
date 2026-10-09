@@ -3,20 +3,25 @@ import SwiftUI
 struct SidebarView: View {
     @Environment(AppModel.self) private var app
     @Environment(ProviderStore.self) private var store
+    private let panel = ProvidersPanelStore.shared
 
     var body: some View {
         List(selection: selection) {
             Section("Launch") {
-                Label("Models", systemImage: "square.stack.3d.up")
+                Label("Models", systemImage: "cube")
                     .tag(Page.models)
                 Label("Pinned", systemImage: "pin")
                     .tag(Page.pinned)
-                Label("Recents", systemImage: "clock.arrow.circlepath")
-                    .tag(Page.recents)
             }
 
             Section("Providers") {
-                ProviderRow(provider: LocalProxy.provider)
+                ForEach(ChannelSpec.all) { spec in
+                    SourceRow(source: .channel(spec.kind))
+                }
+                ForEach(panel.upstreams, id: \.id) { item in
+                    SourceRow(source: .provider(item.id))
+                }
+                .onMove { panel.moveUpstreams(from: $0, to: $1) }
                 ForEach(store.customProviders) { provider in
                     ProviderRow(provider: provider)
                 }
@@ -32,20 +37,36 @@ struct SidebarView: View {
             }
 
             Section("Proxy") {
-                Label("Overview", systemImage: "chart.xyaxis.line").tag(Page.overview)
-                Label("Usage", systemImage: "tablecells").tag(Page.usage)
-                Label("Accounts", systemImage: "person.2.badge.key").tag(Page.accounts)
-                Label("Routing", systemImage: "arrow.triangle.branch").tag(Page.routing)
-                Label("Pricing", systemImage: "dollarsign").tag(Page.pricing)
+                Label("Overview", systemImage: "gauge.with.dots.needle.33percent").tag(Page.overview)
+                Label("Usage", systemImage: "chart.bar").tag(Page.usage)
+                Label("Accounts", systemImage: "person.2").tag(Page.accounts)
+                Label("Pricing", systemImage: "tag").tag(Page.pricing)
             }
         }
         .listStyle(.sidebar)
+        .onDeleteCommand {
+            switch app.page {
+            case .source(.provider(let id)):
+                app.sourceRemoval = id
+            case .provider:
+                if let provider = app.focusedProvider, !provider.isBuiltIn { app.confirmRemoval(of: provider) }
+            default:
+                break
+            }
+        }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             HStack {
                 HealthBadge()
                 Spacer()
             }
             .padding(Space.md)
+        }
+        .task {
+            await CoreProcess.shared.waitUntilReady()
+            panel.start()
+        }
+        .onChange(of: UsageStore.shared.isProxyUp) { _, up in
+            if up, panel.providers == nil { panel.reload() }
         }
     }
 
@@ -70,28 +91,58 @@ private struct ProviderRow: View {
             case .loading:
                 ProgressView().controlSize(.small)
             default:
-                if provider.isBuiltIn, let logo = RavenLogo.image {
-                    Image(nsImage: logo)
-                        .renderingMode(.template)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: 18, height: 18)
-                        .foregroundStyle(provider.accent)
-                } else {
-                    Image(systemName: "server.rack").foregroundStyle(provider.accent)
-                }
+                Image(systemName: "link")
             }
         }
         .tag(Page.provider(provider.id))
-        .help("\(provider.host) · \(status.subtitle)")
+        .help("Direct · \(provider.host) · \(status.subtitle)")
         .contextMenu {
             Button("Refresh") { app.refresh(provider) }
-            if !provider.isBuiltIn {
-                Button("Edit…") { app.edit(provider) }
-                Divider()
-                Button("Remove…", role: .destructive) { app.confirmRemoval(of: provider) }
-            }
+            Button("Edit…") { app.edit(provider) }
+            Divider()
+            Button("Remove…", role: .destructive) { app.confirmRemoval(of: provider) }
         }
     }
 
+}
+
+private struct SourceRow: View {
+    private let panel = ProvidersPanelStore.shared
+    let source: RouteSource
+
+    var body: some View {
+        let entry = panel.entry(source)
+        Label {
+            Text(panel.title(of: source)).lineLimit(1)
+        } icon: {
+            if panel.syncErrors[source] != nil {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.red)
+            } else if panel.blocked(source) {
+                Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
+            } else if case .channel(let kind) = source, let logo = ChannelLogo.image(kind) {
+                Image(nsImage: logo)
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 18, height: 18)
+            } else {
+                Image(systemName: "globe")
+            }
+        }
+        .opacity(entry?.disabled == true ? 0.45 : 1)
+        .tag(Page.source(source))
+        .help(help(entry))
+        .contextMenu { SourceMenu(source: source) }
+    }
+
+    private func help(_ entry: ProviderEntry?) -> String {
+        let count = entry?.models.count ?? 0
+        let models = count == 1 ? "1 model" : "\(count) models"
+        switch source {
+        case .channel:
+            return "Via Raven · \(panel.title(of: source)) accounts · \(models)"
+        case .provider:
+            let base = (entry?.baseUrl ?? "").trimmingCharacters(in: .whitespaces)
+            return "Via Raven · \(URL(string: base)?.host() ?? base) · \(models)"
+        }
+    }
 }

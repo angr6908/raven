@@ -9,7 +9,6 @@ nonisolated struct RavenConfig: Codable {
     var selectedClient: ProviderKind?
     var workdir: String?
     var pinned: [ModelRef] = []
-    var recents: [RecentLaunch] = []
     var recentWorkdirs: [String] = []
     var transient: TransientSettings?
 }
@@ -29,7 +28,6 @@ nonisolated extension RavenConfig {
         selectedClient = try container.decodeIfPresent(ProviderKind.self, forKey: .selectedClient)
         workdir = try container.decodeIfPresent(String.self, forKey: .workdir)
         pinned = try container.decodeIfPresent([ModelRef].self, forKey: .pinned) ?? []
-        recents = try container.decodeIfPresent([RecentLaunch].self, forKey: .recents) ?? []
         recentWorkdirs = try container.decodeIfPresent([String].self, forKey: .recentWorkdirs) ?? []
         transient = try container.decodeIfPresent(TransientSettings.self, forKey: .transient)
     }
@@ -67,7 +65,6 @@ final class ProviderStore {
     private(set) var models: [UUID: [ModelEntry]] = [:]
     private(set) var windowOverrides: [ModelWindowOverride] = []
     private(set) var pinned: [ModelRef] = []
-    private(set) var recents: [RecentLaunch] = []
     private(set) var recentWorkdirPaths: [String] = []
     private(set) var loading: Set<UUID> = []
     private(set) var errors: [UUID: String] = [:]
@@ -107,7 +104,6 @@ final class ProviderStore {
             providers = [LocalProxy.provider] + config.providers.filter { !$0.isBuiltIn }
             windowOverrides = config.windowOverrides
             pinned = config.pinned
-            recents = config.recents
             recentWorkdirPaths = config.recentWorkdirs
             client = config.selectedClient ?? .claude
             if let providerID = config.selectedProviderID, let modelID = config.selectedModelID {
@@ -161,7 +157,6 @@ final class ProviderStore {
             selectedClient: client,
             workdir: workdir.path(percentEncoded: false),
             pinned: pinned,
-            recents: recents,
             recentWorkdirs: recentWorkdirPaths,
             transient: TransientSettings(client: client, workdir: workdirPath)
         )
@@ -243,7 +238,7 @@ final class ProviderStore {
     var recentWorkdirs: [URL] {
         var seen: Set<String> = []
         var result: [URL] = []
-        for path in recentWorkdirPaths + recents.map(\.workdir) where !seen.contains(path) {
+        for path in recentWorkdirPaths where !seen.contains(path) {
             seen.insert(path)
             result.append(URL(filePath: path, directoryHint: .isDirectory))
         }
@@ -280,7 +275,6 @@ final class ProviderStore {
         errors[provider.id] = nil
         refreshedAt[provider.id] = nil
         pinned.removeAll { $0.providerID == provider.id }
-        recents.removeAll { $0.providerID == provider.id }
         windowOverrides.removeAll { $0.providerID == provider.id }
         if selection?.providerID == provider.id {
             selection = nil
@@ -359,31 +353,6 @@ final class ProviderStore {
         persist()
     }
 
-    func recordLaunch(_ item: ModelItem) {
-        let path = workdirPath
-        recents.removeAll {
-            $0.ref == item.ref && $0.client == client && $0.workdir == path
-        }
-        recents.insert(RecentLaunch(providerID: item.provider.id, modelID: item.entry.modelID,
-                                    client: client, workdir: path, date: .now), at: 0)
-        if recents.count > Self.recentsLimit {
-            recents.removeLast(recents.count - Self.recentsLimit)
-        }
-        persist()
-    }
-
-    func clearRecents() {
-        recents.removeAll()
-        persist()
-    }
-
-    func restore(_ recent: RecentLaunch) {
-        guard providers.contains(where: { $0.id == recent.providerID }) else { return }
-        client = recent.client
-        workdir = URL(filePath: recent.workdir, directoryHint: .isDirectory)
-        selection = recent.ref
-    }
-
     func launchScript() -> String? {
         guard let item = selectedItem else { return nil }
         return Launcher.makeScript(provider: item.provider, model: item.entry.modelID,
@@ -394,7 +363,6 @@ final class ProviderStore {
         guard let item = selectedItem else { return }
         try await Launcher.launch(provider: item.provider, model: item.entry.modelID,
                                   client: client, workdir: workdir)
-        recordLaunch(item)
     }
 
     func refreshAll() async {

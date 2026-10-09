@@ -19,6 +19,8 @@ final class ProvidersPanelStore {
     private(set) var error: String?
     private(set) var effortLevels: [String] = PanelLogic.fallbackEffortLevels
     private(set) var antigravityLevels: [String: [String]] = [:]
+    private(set) var syncing: Set<RouteSource> = []
+    private(set) var syncErrors: [RouteSource: String] = [:]
 
     let saver = AutoSaveScheduler()
     private var revision = 0
@@ -55,6 +57,7 @@ final class ProvidersPanelStore {
                     }
                 }
                 self.error = nil
+                self.syncAll()
             } catch {
                 guard !Task.isCancelled else { return }
                 self.error = (error as? PanelError)?.noticeText ?? error.localizedDescription
@@ -112,6 +115,34 @@ final class ProvidersPanelStore {
         index(of: source).map { list[$0] }
     }
 
+    func title(of source: RouteSource) -> String {
+        switch source {
+        case .channel(let kind): ChannelSpec.spec(for: kind)?.title ?? kind
+        case .provider: entry(source).map(RoutingTable.sourceName) ?? "Provider"
+        }
+    }
+
+    func source(serving clientID: String) -> RouteSource? {
+        guard let index = list.firstIndex(where: { $0.models.contains { RoutingTable.clientID($0) == clientID } })
+        else { return nil }
+        if list[index].isManaged, let kind = list[index].kind { return .channel(kind) }
+        return index < ids.count ? .provider(ids[index]) : nil
+    }
+
+    func modelIndex(_ source: RouteSource, clientID: String) -> Int? {
+        entry(source)?.models.firstIndex { RoutingTable.clientID($0) == clientID }
+    }
+
+    func status(_ source: RouteSource, model: Int) -> RouteStatus? {
+        guard let index = index(of: source), model < list[index].models.count else { return nil }
+        return RoutingTable.status(provider: index, model: model, in: list)
+    }
+
+    func blocked(_ source: RouteSource) -> Bool {
+        guard case .provider = source, let index = index(of: source) else { return false }
+        return RoutingTable.issues(at: index, in: list).contains(where: \.blocking)
+    }
+
     var upstreams: [(id: UUID, index: Int, entry: ProviderEntry)] {
         zip(list.indices, zip(ids, list)).compactMap { index, pair in
             pair.1.isManaged ? nil : (pair.0, index, pair.1)
@@ -166,12 +197,10 @@ final class ProvidersPanelStore {
         edit(source) { $0.disabled = !on }
     }
 
-    @discardableResult
-    func addProvider() -> UUID {
+    func add(_ entry: ProviderEntry) -> UUID? {
+        guard providers != nil else { return nil }
         let id = UUID()
         mutate { list, keys in
-            var entry = PanelLogic.blankProviderEntry(kind: "openai")
-            entry.apiKeyEntries = [ApiKeyEntry(apiKey: "")]
             list.append(entry)
             keys.append(id)
         }
@@ -224,28 +253,48 @@ final class ProvidersPanelStore {
         }
     }
 
-    func addBlankModel(_ source: RouteSource) {
-        edit(source) { $0.models.append(ProviderModelDef(name: "")) }
+    func syncAll() {
+        for spec in ChannelSpec.all { sync(.channel(spec.kind)) }
+        for item in upstreams { sync(.provider(item.id)) }
     }
 
-    func addModels(_ source: RouteSource, _ upstream: [UpstreamCatalogModel]) {
-        edit(source) { entry in
-            var existing = Set(entry.models.map { $0.name.lowercased() })
-            for model in upstream where !existing.contains(model.id.lowercased()) {
-                existing.insert(model.id.lowercased())
+    func sync(_ source: RouteSource) {
+        guard providers != nil, !syncing.contains(source), !blocked(source) else { return }
+        if case .provider = source, index(of: source) == nil { return }
+        syncing.insert(source)
+        Task { [weak self] in
+            guard let self else { return }
+            defer { self.syncing.remove(source) }
+            do {
+                let catalog = try await self.catalog(for: source)
+                self.syncErrors[source] = nil
+                self.mirror(source, catalog)
+            } catch {
+                self.syncErrors[source] = (error as? PanelError)?.noticeText ?? error.localizedDescription
+            }
+        }
+    }
+
+    private func mirror(_ source: RouteSource, _ catalog: [UpstreamCatalogModel]) {
+        guard !catalog.isEmpty else { return }
+        let current = entry(source)?.models ?? []
+        var existing: [String: ProviderModelDef] = [:]
+        for model in current where existing[model.name.lowercased()] == nil {
+            existing[model.name.lowercased()] = model
+        }
+        var seen: Set<String> = []
+        var next: [ProviderModelDef] = []
+        for model in catalog where seen.insert(model.id.lowercased()).inserted {
+            if let kept = existing[model.id.lowercased()] {
+                next.append(kept)
+            } else {
                 var def = ProviderModelDef(name: model.id)
                 if let context = model.contextLength, context > 0 { def.maxContextLength = context }
-                entry.models.append(def)
+                next.append(def)
             }
         }
-    }
-
-    func removeModels(_ source: RouteSource, at offsets: IndexSet) {
-        edit(source) { entry in
-            for index in offsets.sorted(by: >) where index < entry.models.count {
-                entry.models.remove(at: index)
-            }
-        }
+        guard next.map(\.name) != current.map(\.name) else { return }
+        edit(source) { $0.models = next }
     }
 
     func updateAntigravityLevels(from models: [UpstreamCatalogModel]) {
